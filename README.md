@@ -1,1 +1,1 @@
-The Project can be downloaded at [Hit Combo ](https://www.curseforge.com/wow/addons/logtimeline) through CurseForge
+The Project can be downloaded at [Curse Forge - LogTimeline ](https://www.curseforge.com/wow/addons/logtimeline).
