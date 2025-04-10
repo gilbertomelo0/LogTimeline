@@ -42,6 +42,7 @@ COOLDOWNS_TO_TRACK = {
 
 -- Debuffs to track on target
 DEBUFFS_TO_TRACK = {
+    --Priest
     "Shadow Word: Pain",
     "Vampiric Touch",
     "Devouring Plague",

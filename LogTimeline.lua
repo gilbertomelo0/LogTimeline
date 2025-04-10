@@ -67,7 +67,7 @@ local function CreateBuffIcon(buffName)
     iconTexture:SetAllPoints(iconFrame)
     
     local stackText = iconFrame:CreateFontString(nil, "OVERLAY")
-    stackText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0) -- Centered
+    stackText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
     stackText:SetTextColor(1, 1, 1, 1)
     
     return {
@@ -142,7 +142,6 @@ TimelineFrame:SetScript("OnMouseDown", function(self, button)
 end)
 TimelineFrame:SetScript("OnMouseUp", function(self)
     self:StopMovingOrSizing()
-    -- Save the new position when movement stops
     local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
     LogTimelineDB = LogTimelineDB or {}
     LogTimelineDB.point = point
@@ -296,7 +295,7 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
         TimelineFrame:ClearAllPoints()
         TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
         LogTimelineDB = nil
-        LoadPositionAndSize() -- Reset sliders and font size to default
+        LoadPositionAndSize()
         if ConfigFrame:IsShown() then
             WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
@@ -445,7 +444,7 @@ local function UpdateAlphaPhasing()
             else
                 iconData.stackText:SetAlpha(0)
             end
-            iconData.stackText:Show() -- Ensure text is visible when active
+            iconData.stackText:Show()
         end
     end
 end
@@ -510,7 +509,7 @@ local function UpdateIconPositions()
     phaseTimer = phaseTimer + UPDATE_INTERVAL
 end
 
--- Function to check for buffs
+-- Function to check for buffs on player
 local function CheckBuff()
     local currentTime = GetTime()
     local foundBuffs = {}
@@ -597,7 +596,7 @@ local function CheckCooldowns()
     end
 end
 
--- Function to check target debuffs
+-- Function to check debuffs on target
 local function CheckDebuff()
     local currentTime = GetTime()
     local foundDebuffs = {}
@@ -608,7 +607,7 @@ local function CheckDebuff()
     
     if UnitExists("target") then
         for i = 1, 40 do
-            local aura = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL")
+            local aura = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL|PLAYER") -- Added PLAYER filter
             if aura and debuffIcons[aura.name] then
                 local iconData = debuffIcons[aura.name]
                 iconData.icon:SetTexture(aura.icon)
