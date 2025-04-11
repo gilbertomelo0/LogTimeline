@@ -43,15 +43,21 @@ end
 
 -- Function to update stack text font size
 local function UpdateStackTextFontSize()
-    local fontSize = LogTimelineDB and LogTimelineDB.stackFontSize or STACK_FONT_SIZE
+    local fontSize = LogTimelineDB and LogTimelineDB.stackFontSize or 10 -- Default font size
     for _, iconData in pairs(buffIcons) do
-        iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        if iconData.stackText then
+            iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        end
     end
     for _, iconData in pairs(cooldownIcons) do
-        iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        if iconData.stackText then
+            iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        end
     end
     for _, iconData in pairs(debuffIcons) do
-        iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        if iconData.stackText then
+            iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+        end
     end
 end
 
@@ -69,6 +75,9 @@ local function CreateBuffIcon(buffName)
     local stackText = iconFrame:CreateFontString(nil, "OVERLAY")
     stackText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0) -- Centered
     stackText:SetTextColor(1, 1, 1, 1)
+    -- Set font immediately to avoid "Font not set" error
+    local fontSize = LogTimelineDB and LogTimelineDB.stackFontSize or 10 -- Default font size
+    stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
     
     return {
         frame = iconFrame,
@@ -521,6 +530,7 @@ local function CheckBuff()
     
     for i = 1, 40 do
         local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+        
         if aura and buffIcons[aura.name] then
             local iconData = buffIcons[aura.name]
             iconData.icon:SetTexture(aura.icon)
