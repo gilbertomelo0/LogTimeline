@@ -1,16 +1,16 @@
 -- LogTimelineConfig.lua
 
 -- Timeline Settings
-UPDATE_INTERVAL = 0.01
-OVERLAP_DISTANCE = 15
-PHASE_SPEED = 2.5
-MAX_ALPHA = 1.0
-MIN_ALPHA = 0.0
-TIMELINE_MAX_DURATION = 45
+UPDATE_INTERVAL = 0.01 -- how frequently the icon position will be updated on the screen
+OVERLAP_DISTANCE = 15 -- what distance one icon has to be overlapping each other in order for them to alternate between them
+PHASE_SPEED = 2.5 -- how fast the alternation of the icons will be
+MAX_ALPHA = 1.0 -- what is the maximum alternation alpha
+MIN_ALPHA = 0.0 -- what is the minimum alternation alpha
+TIMELINE_MAX_DURATION = 45 -- what is the maximum time that the timeline should represent
 
 -- Logarithmic Scale Settings
 LOGARITHMIC_SCALE = true
-LOG_BASE = 20
+LOG_BASE = 100
 MIN_VISIBLE_TIME = 0.1
 
 -- Buffs to track on player

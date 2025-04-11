@@ -231,13 +231,15 @@ WidthSlider.Text:SetText("Line Thickness")
 WidthSlider.Low:SetText("1")
 WidthSlider.High:SetText("20")
 WidthSlider:SetScript("OnValueChanged", function(self, value)
+    local roundedValue = math.floor(value + 0.5) -- Rounds to nearest integer
     LogTimelineDB = LogTimelineDB or {}
-    LogTimelineDB.lineThickness = value
+    LogTimelineDB.lineThickness = roundedValue
+    self:SetValue(roundedValue) -- Ensure slider snaps to rounded value
     UpdateTimelineSize()
-    self.Value:SetText(value)
+    self.Value:SetText(roundedValue)
 end)
 WidthSlider.Value = WidthSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-WidthSlider.Value:SetPoint("BOTTOM", WidthSlider, "TOP", 0, 5)
+WidthSlider.Value:SetPoint("BOTTOM", WidthSlider, "BOTTOM", 0, -5)
 
 -- Length Slider
 local LengthSlider = CreateFrame("Slider", "LogTimelineLengthSlider", ConfigFrame, "OptionsSliderTemplate")
@@ -249,13 +251,15 @@ LengthSlider.Text:SetText("Line Length")
 LengthSlider.Low:SetText("100")
 LengthSlider.High:SetText("1000")
 LengthSlider:SetScript("OnValueChanged", function(self, value)
+    local roundedValue = math.floor(value + 0.5) -- Rounds to nearest integer
     LogTimelineDB = LogTimelineDB or {}
-    LogTimelineDB.totalDistance = value
+    LogTimelineDB.totalDistance = roundedValue
+    self:SetValue(roundedValue) -- Ensure slider snaps to rounded value
     UpdateTimelineSize()
-    self.Value:SetText(value)
+    self.Value:SetText(roundedValue)
 end)
 LengthSlider.Value = LengthSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-LengthSlider.Value:SetPoint("BOTTOM", LengthSlider, "TOP", 0, 5)
+LengthSlider.Value:SetPoint("BOTTOM", LengthSlider, "BOTTOM", 0, -5)
 
 -- Slash command handler
 SLASH_LOGTIMELINE1 = "/logt"
