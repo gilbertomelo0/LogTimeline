@@ -16,7 +16,7 @@ TimelineFrame:SetSize(LogTimelineDB and LogTimelineDB.totalDistance or 500, LogT
 TimelineFrame:SetHitRectInsets(-20, -20, -20, -20)
 TimelineFrame:Show()
 BuffLine:Show()
-print("[LogTimeline] BuffLine created")
+--print("[LogTimeline] BuffLine created")
 
 TimelineFrame:SetMovable(true)
 TimelineFrame:EnableMouse(false)
@@ -62,7 +62,7 @@ function UpdateTimelineSize()
     BuffLine:SetDrawLayer("BACKGROUND", 0)
     BuffLine:Show()
     TimelineFrame:SetSize(totalDistance, lineThickness)
-    print("[LogTimeline] Set timeline size: width=" .. totalDistance .. ", height=" .. lineThickness)
+    --print("[LogTimeline] Set timeline size: width=" .. totalDistance .. ", height=" .. lineThickness)
 end
 
 local function UpdateStackTextFontSize()
@@ -95,7 +95,7 @@ local function CreateBuffIcon(buffName)
     stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
     stackText:SetDrawLayer("OVERLAY", 1)
     
-    print("[LogTimeline] Created icon for " .. buffName)
+    --print("[LogTimeline] Created icon for " .. buffName)
     
     return {
         frame = iconFrame,
@@ -181,30 +181,30 @@ function InitializeIcons()
     -- Add user-tracked spells from DB
     for buffName, _ in pairs(LogTimelineDB.trackedSpells.buffs) do
         trackedBuffs[buffName] = true
-        print("[LogTimeline] Loaded tracked buff: " .. buffName)
+        --print("[LogTimeline] Loaded tracked buff: " .. buffName)
     end
     for spellName, info in pairs(LogTimelineDB.trackedSpells.cooldowns) do
         trackedCooldowns[spellName] = {spellID = info.spellID, shouldGlow = info.shouldGlow}
-        print("[LogTimeline] Loaded tracked cooldown: " .. spellName)
+        --print("[LogTimeline] Loaded tracked cooldown: " .. spellName)
     end
     for debuffName, _ in pairs(LogTimelineDB.trackedSpells.debuffs) do
         trackedDebuffs[debuffName] = true
-        print("[LogTimeline] Loaded tracked debuff: " .. debuffName)
+        --print("[LogTimeline] Loaded tracked debuff: " .. debuffName)
     end
     
     -- Create icons only for tracked spells
     for buffName, _ in pairs(trackedBuffs) do
         buffIcons[buffName] = CreateBuffIcon(buffName)
-        print("[LogTimeline] Initialized buff icon: " .. buffName)
+        --print("[LogTimeline] Initialized buff icon: " .. buffName)
     end
     for spellName, info in pairs(trackedCooldowns) do
         cooldownIcons[spellName] = CreateCooldownIcon(info.spellID, spellName, info.shouldGlow)
-        print("[LogTimeline] Initialized cooldown icon: " .. spellName)
+        --print("[LogTimeline] Initialized cooldown icon: " .. spellName)
     end
     for debuffName, _ in pairs(trackedDebuffs) do
         debuffIcons[debuffName] = CreateBuffIcon(debuffName)
         debuffIcons[debuffName].isDebuff = true
-        print("[LogTimeline] Initialized debuff icon: " .. debuffName)
+        --print("[LogTimeline] Initialized debuff icon: " .. debuffName)
     end
     
     print("[LogTimeline] Initialized " .. table.getn(buffIcons) .. " buffs, " .. table.getn(cooldownIcons) .. " cooldowns, " .. table.getn(debuffIcons) .. " debuffs")
@@ -238,7 +238,7 @@ function CheckBuff()
             iconData.frame:Show()
             iconData.groupIndex = 0
             foundBuffs[aura.name] = true
-            print("[LogTimeline] Detected buff: " .. aura.name)
+            --print("[LogTimeline] Detected buff: " .. aura.name)
         end
     end
     for buffName, iconData in pairs(buffIcons) do
@@ -311,7 +311,7 @@ function CheckDebuff()
                 iconData.frame:Show()
                 iconData.groupIndex = 0
                 foundDebuffs[aura.name] = true
-                print("[LogTimeline] Detected debuff: " .. aura.name)
+                --print("[LogTimeline] Detected debuff: " .. aura.name)
             end
         end
     end
@@ -333,7 +333,7 @@ local function LoadPositionAndSize()
     else
         TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
     end
-    print("[LogTimeline] Loading position")
+    --print("[LogTimeline] Loading position")
     UpdateTimelineSize()
     UpdateStackTextFontSize()
 end
@@ -496,8 +496,8 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
         SetTimelineLock(false)
         if ConfigFrame:IsShown() then LockButton:SetText("Lock and Close") end
     elseif command == "debuglayer" then
-        print("[LogTimeline] Timeline frame level: " .. TimelineFrame:GetFrameLevel())
-        print("[LogTimeline] BuffLine draw layer: " .. BuffLine:GetDrawLayer())
+        --print("[LogTimeline] Timeline frame level: " .. TimelineFrame:GetFrameLevel())
+        --print("[LogTimeline] BuffLine draw layer: " .. BuffLine:GetDrawLayer())
         for _, iconData in pairs(buffIcons) do
             if iconData.isActive then print("[LogTimeline] Buff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel()) end
         end
@@ -509,10 +509,10 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
         end
     elseif command == "linear" then
         LOGARITHMIC_SCALE = false
-        print("[LogTimeline] Linear scale")
+        --print("[LogTimeline] Linear scale")
     elseif command == "log" then
         LOGARITHMIC_SCALE = true
-        print("[LogTimeline] Logarithmic scale")
+        --print("[LogTimeline] Logarithmic scale")
     elseif command == "base" and args[2] then
         local newBase = tonumber(args[2])
         if newBase and newBase > 1 then LOG_BASE = newBase print("[LogTimeline] Log base: "..LOG_BASE) end
@@ -525,7 +525,7 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
             LogTimelineDB = LogTimelineDB or {}
             LogTimelineDB.stackFontSize = newSize
             UpdateStackTextFontSize()
-            print("[LogTimeline] Font size: "..newSize)
+            --print("[LogTimeline] Font size: "..newSize)
         end
     elseif command == "reset" then
         TimelineFrame:ClearAllPoints()
@@ -556,10 +556,10 @@ EventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 EventFrame:SetScript("OnEvent", function(self, event, unit)
     if event == "PLAYER_LOGIN" then
         print("[LogTimeline] Loaded")
-        print("[LogTimeline] Scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
+        --print("[LogTimeline] Scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
         LogTimelineDB = LogTimelineDB or {}
         LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
-        print("[LogTimeline] trackedSpells initialized")
+        --print("[LogTimeline] trackedSpells initialized")
         InitializeIcons()
         LoadPositionAndSize()
         CheckBuff()
