@@ -122,6 +122,8 @@ local function CreateBuffIcon(buffName)
     stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
     stackText:SetDrawLayer("OVERLAY", 1)
     
+    print("[LogTimeline] Created icon for " .. buffName)
+    
     return {
         frame = iconFrame,
         icon = iconTexture,
@@ -214,6 +216,24 @@ local function InitializeIcons()
         debuffIcons[debuffName] = CreateBuffIcon(debuffName)
         debuffIcons[debuffName].isDebuff = true
     end
+    
+    print("[LogTimeline] Initialized " .. #buffIcons .. " buffs, " .. #cooldownIcons .. " cooldowns, " .. #debuffIcons .. " debuffs")
+end
+
+-- Function to calculate position based on time remaining
+local function CalculatePosition(timeLeft, maxDuration)
+    local totalDistance = LogTimelineDB and LogTimelineDB.totalDistance or 500
+    if not LOGARITHMIC_SCALE then
+        return (totalDistance/2) - (totalDistance * (1 - (timeLeft / maxDuration)))
+    else
+        if timeLeft <= MIN_VISIBLE_TIME then
+            return (totalDistance/2) - totalDistance
+        end
+        
+        local normalizedTime = (timeLeft - MIN_VISIBLE_TIME) / (maxDuration - MIN_VISIBLE_TIME)
+        local logValue = math.log(1 + (LOG_BASE - 1) * normalizedTime) / math.log(LOG_BASE)
+        return (totalDistance/2) - (totalDistance * (1 - logValue))
+    end
 end
 
 -- Function to check for buffs
@@ -249,6 +269,7 @@ local function CheckBuff()
             iconData.frame:Show()
             iconData.groupIndex = 0
             foundBuffs[aura.name] = true
+            print("[LogTimeline] Detected buff: " .. aura.name)
         end
     end
     
@@ -337,6 +358,7 @@ local function CheckDebuff()
                 iconData.frame:Show()
                 iconData.groupIndex = 0
                 foundDebuffs[aura.name] = true
+                print("[LogTimeline] Detected debuff: " .. aura.name)
             end
         end
     end
@@ -369,259 +391,6 @@ local function LoadPositionAndSize()
     print("[LogTimeline] Loading position and size")
     UpdateTimelineSize()
     UpdateStackTextFontSize()
-end
-
--- Initialize icons after PLAYER_LOGIN
-local EventFrame = CreateFrame("Frame")
-EventFrame:RegisterEvent("PLAYER_LOGIN")
-EventFrame:RegisterEvent("UNIT_AURA")
-EventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
-EventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-EventFrame:SetScript("OnEvent", function(self, event, unit)
-    if event == "PLAYER_LOGIN" then
-        print("[LogTimeline] Loaded for The War Within")
-        print("[LogTimeline] Current scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
-        InitializeIcons()
-        LoadPositionAndSize()
-        CheckBuff()
-        CheckCooldowns()
-        CheckDebuff()
-        if ConfigFrame and ConfigFrame:IsShown() then
-            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
-            WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)
-            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
-            LengthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.totalDistance or 500)
-            if LockButton then
-                LockButton:SetText(TimelineFrame.locked and "Unlock" or "Lock and Close")
-            end
-        end
-    elseif event == "UNIT_AURA" then
-        if unit == "player" then
-            CheckBuff()
-        elseif unit == "target" then
-            CheckDebuff()
-        end
-    elseif event == "SPELL_UPDATE_COOLDOWN" then
-        CheckCooldowns()
-    elseif event == "PLAYER_TARGET_CHANGED" then
-        CheckDebuff()
-    end
-end)
-
-
--- Function to calculate position based on time remaining
-local function CalculatePosition(timeLeft, maxDuration)
-    local totalDistance = LogTimelineDB and LogTimelineDB.totalDistance or 500
-    if not LOGARITHMIC_SCALE then
-        return (totalDistance/2) - (totalDistance * (1 - (timeLeft / maxDuration)))
-    else
-        if timeLeft <= MIN_VISIBLE_TIME then
-            return (totalDistance/2) - totalDistance
-        end
-        
-        local normalizedTime = (timeLeft - MIN_VISIBLE_TIME) / (maxDuration - MIN_VISIBLE_TIME)
-        local logValue = math.log(1 + (LOG_BASE - 1) * normalizedTime) / math.log(LOG_BASE)
-        return (totalDistance/2) - (totalDistance * (1 - logValue))
-    end
-end
-
-
-
--- Function to create icon frames
-local function CreateBuffIcon(buffName)
-    local iconFrame = CreateFrame("Frame", "LogTimelineIcon_"..buffName, UIParent)
-    iconFrame:SetSize(32, 32)
-    iconFrame:SetPoint("CENTER", TimelineFrame, "CENTER", (LogTimelineDB and LogTimelineDB.totalDistance or 500)/2, 0)
-    iconFrame:Hide()
-    iconFrame:SetAlpha(1)
-    
-    local iconTexture = iconFrame:CreateTexture(nil, "ARTWORK")
-    iconTexture:SetAllPoints(iconFrame)
-    
-    local stackText = iconFrame:CreateFontString(nil, "OVERLAY")
-    stackText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0) -- Centered
-    stackText:SetTextColor(1, 1, 1, 1)
-    -- Set font immediately to avoid "Font not set" error
-    local fontSize = LogTimelineDB and LogTimelineDB.stackFontSize or 10 -- Default font size
-    stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
-    
-    return {
-        frame = iconFrame,
-        icon = iconTexture,
-        stackText = stackText,
-        remainingTime = 0,
-        expirationTime = 0,
-        name = buffName,
-        xPos = 0,
-        groupIndex = 0,
-        phaseOffset = 0,
-        isActive = false,
-        isCooldown = false,
-        isDebuff = false
-    }
-end
-
--- Function to create cooldown icon frames with selective glow
-local function CreateCooldownIcon(spellID, spellName, shouldGlow)
-    local iconData = CreateBuffIcon(spellName)
-    iconData.isCooldown = true
-    iconData.spellID = spellID
-    iconData.shouldGlow = shouldGlow
-    
-    iconData.cooldownFrame = CreateFrame("Frame", "LogTimelineCooldown_"..spellName, iconData.frame)
-    iconData.cooldownFrame:SetAllPoints(iconData.frame)
-    
-    if shouldGlow then
-        iconData.glow = iconData.frame:CreateTexture(nil, "OVERLAY")
-        iconData.glow:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
-        iconData.glow:SetPoint("CENTER", iconData.frame, "CENTER")
-        iconData.glow:SetSize(48, 48)
-        iconData.glow:SetBlendMode("ADD")
-        iconData.glow:SetVertexColor(1, 0.8, 0, 0.8)
-        iconData.glow:Hide()
-    end
-    
-    local spellInfo = C_Spell.GetSpellInfo(spellID)
-    if spellInfo then
-        iconData.icon:SetTexture(spellInfo.iconID)
-    end
-    
-    return iconData
-end
-
--- Initialize all icons
-for _, buffName in ipairs(BUFFS_TO_TRACK) do
-    buffIcons[buffName] = CreateBuffIcon(buffName)
-end
-
-for _, cooldownInfo in ipairs(COOLDOWNS_TO_TRACK) do
-    cooldownIcons[cooldownInfo.spellName] = CreateCooldownIcon(
-        cooldownInfo.spellID, 
-        cooldownInfo.spellName, 
-        cooldownInfo.shouldGlow
-    )
-end
-
-for _, debuffName in ipairs(DEBUFFS_TO_TRACK) do
-    debuffIcons[debuffName] = CreateBuffIcon(debuffName)
-    debuffIcons[debuffName].isDebuff = true
-end
-
-
--- Make the timeline movable when unlocked
-TimelineFrame:SetMovable(true)
-TimelineFrame:EnableMouse(false)
-TimelineFrame:SetScript("OnMouseDown", function(self, button)
-    if button == "LeftButton" and not self.locked then
-        print("[LogTimeline] Starting to move timeline")
-        self:StartMoving()
-    end
-end)
-TimelineFrame:SetScript("OnMouseUp", function(self)
-    if not self.locked then
-        self:StopMovingOrSizing()
-        local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
-        LogTimelineDB = LogTimelineDB or {}
-        LogTimelineDB.point = point
-        LogTimelineDB.relativePoint = relativePoint
-        LogTimelineDB.xOfs = xOfs
-        LogTimelineDB.yOfs = yOfs
-        print("[LogTimeline] Timeline moved to: point=" .. (point or "none") .. ", x=" .. (xOfs or 0) .. ", y=" .. (yOfs or 0))
-    end
-end)
-
--- Slash command handler
-SLASH_LOGTIMELINE1 = "/logt"
-SlashCmdList["LOGTIMELINE"] = function(msg)
-    local args = {strsplit(" ", msg)}
-    local command = args[1] or ""
-    
-    if command == "lock" then
-        SetTimelineLock(true)
-        if ConfigFrame:IsShown() then LockButton:SetText("Unlock") end
-    elseif command == "unlock" then
-        SetTimelineLock(false)
-        if ConfigFrame:IsShown() then LockButton:SetText("Lock and Close") end
-    elseif command == "debuglayer" then
-        print("[LogTimeline] Timeline frame level: " .. TimelineFrame:GetFrameLevel())
-        print("[LogTimeline] BuffLine draw layer: " .. BuffLine:GetDrawLayer())
-        for _, iconData in pairs(buffIcons) do
-            if iconData.isActive then
-                print("[LogTimeline] Buff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
-            end
-        end
-        for _, iconData in pairs(cooldownIcons) do
-            if iconData.isActive then
-                print("[LogTimeline] Cooldown icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
-            end
-        end
-        for _, iconData in pairs(debuffIcons) do
-            if iconData.isActive then
-                print("[LogTimeline] Debuff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
-            end
-        end    
-    elseif command == "linear" then
-        LOGARITHMIC_SCALE = false
-        print("[LogTimeline] Using linear timeline scale")
-    elseif command == "log" then
-        LOGARITHMIC_SCALE = true
-        print("[LogTimeline] Using logarithmic timeline scale")
-    elseif command == "base" and args[2] then
-        local newBase = tonumber(args[2])
-        if newBase and newBase > 1 then
-            LOG_BASE = newBase
-            print("[LogTimeline] Logarithm base set to "..LOG_BASE)
-        else
-            print("[LogTimeline] Invalid base value. Must be a number > 1")
-        end
-    elseif command == "min" and args[2] then
-        local newMin = tonumber(args[2])
-        if newMin and newMin >= 0 then
-            MIN_VISIBLE_TIME = newMin
-            print("[LogTimeline] Minimum visible time set to "..MIN_VISIBLE_TIME.." seconds")
-        else
-            print("[LogTimeline] Invalid minimum time. Must be a number >= 0")
-        end
-    elseif command == "fontsize" and args[2] then
-        local newSize = tonumber(args[2])
-        if newSize and newSize >= 6 and newSize <= 30 then
-            LogTimelineDB = LogTimelineDB or {}
-            LogTimelineDB.stackFontSize = newSize
-            UpdateStackTextFontSize()
-            print("[LogTimeline] Stack text font size set to "..newSize)
-        else
-            print("[LogTimeline] Invalid font size. Must be a number between 6 and 30")
-        end
-    elseif command == "reset" then
-        TimelineFrame:ClearAllPoints()
-        TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
-        LogTimelineDB = nil
-        LoadPositionAndSize() -- Reset sliders and font size to default
-        if ConfigFrame:IsShown() then
-            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
-            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
-        end
-        print("[LogTimeline] Timeline position, size, and font size reset to default")
-    elseif command == "config" then
-        if ConfigFrame:IsShown() then
-            ConfigFrame:Hide()
-        else
-            ConfigFrame:Show()
-            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
-            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
-        end
-    else
-        print("[LogTimeline] Commands:")
-        print("/logt lock - Lock the timeline position")
-        print("/logt unlock - Unlock the timeline position")
-        print("/logt linear - Use linear timeline scale")
-        print("/logt log - Use logarithmic timeline scale")
-        print("/logt base [number] - Set logarithm base (default 20, higher = steeper)")
-        print("/logt min [seconds] - Set minimum visible time (default 0.1)")
-        print("/logt fontsize [number] - Set stack text font size (6-30, default "..STACK_FONT_SIZE..")")
-        print("/logt reset - Reset timeline position, size, and font size to default")
-        print("/logt config - Show/hide configuration panel")
-    end
 end
 
 -- Function to identify overlapping buff groups
@@ -745,7 +514,7 @@ local function UpdateAlphaPhasing()
             else
                 iconData.stackText:SetAlpha(0)
             end
-            iconData.stackText:Show() -- Ensure text is visible when active
+            iconData.stackText:Show()
         end
     end
 end
@@ -759,7 +528,7 @@ local function UpdateIconPositions()
             local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
             iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
             iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
-            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10) -- Higher level
+            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
             iconData.frame:Show()
             if iconData.stackText then
                 iconData.stackText:SetDrawLayer("OVERLAY", 1)
@@ -819,7 +588,99 @@ local function UpdateIconPositions()
     phaseTimer = phaseTimer + UPDATE_INTERVAL
 end
 
-
+-- Slash command handler
+SLASH_LOGTIMELINE1 = "/logt"
+SlashCmdList["LOGTIMELINE"] = function(msg)
+    local args = {strsplit(" ", msg)}
+    local command = args[1] or ""
+    
+    if command == "lock" then
+        SetTimelineLock(true)
+        if ConfigFrame:IsShown() then LockButton:SetText("Unlock") end
+    elseif command == "unlock" then
+        SetTimelineLock(false)
+        if ConfigFrame:IsShown() then LockButton:SetText("Lock and Close") end
+    elseif command == "debuglayer" then
+        print("[LogTimeline] Timeline frame level: " .. TimelineFrame:GetFrameLevel())
+        print("[LogTimeline] BuffLine draw layer: " .. BuffLine:GetDrawLayer())
+        for _, iconData in pairs(buffIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Buff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end
+        for _, iconData in pairs(cooldownIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Cooldown icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end
+        for _, iconData in pairs(debuffIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Debuff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end    
+    elseif command == "linear" then
+        LOGARITHMIC_SCALE = false
+        print("[LogTimeline] Using linear timeline scale")
+    elseif command == "log" then
+        LOGARITHMIC_SCALE = true
+        print("[LogTimeline] Using logarithmic timeline scale")
+    elseif command == "base" and args[2] then
+        local newBase = tonumber(args[2])
+        if newBase and newBase > 1 then
+            LOG_BASE = newBase
+            print("[LogTimeline] Logarithm base set to "..LOG_BASE)
+        else
+            print("[LogTimeline] Invalid base value. Must be a number > 1")
+        end
+    elseif command == "min" and args[2] then
+        local newMin = tonumber(args[2])
+        if newMin and newMin >= 0 then
+            MIN_VISIBLE_TIME = newMin
+            print("[LogTimeline] Minimum visible time set to "..MIN_VISIBLE_TIME.." seconds")
+        else
+            print("[LogTimeline] Invalid minimum time. Must be a number >= 0")
+        end
+    elseif command == "fontsize" and args[2] then
+        local newSize = tonumber(args[2])
+        if newSize and newSize >= 6 and newSize <= 30 then
+            LogTimelineDB = LogTimelineDB or {}
+            LogTimelineDB.stackFontSize = newSize
+            UpdateStackTextFontSize()
+            print("[LogTimeline] Stack text font size set to "..newSize)
+        else
+            print("[LogTimeline] Invalid font size. Must be a number between 6 and 30")
+        end
+    elseif command == "reset" then
+        TimelineFrame:ClearAllPoints()
+        TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
+        LogTimelineDB = nil
+        LoadPositionAndSize()
+        if ConfigFrame:IsShown() then
+            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+        end
+        print("[LogTimeline] Timeline position, size, and font size reset to default")
+    elseif command == "config" then
+        if ConfigFrame:IsShown() then
+            ConfigFrame:Hide()
+        else
+            ConfigFrame:Show()
+            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+        end
+    else
+        print("[LogTimeline] Commands:")
+        print("/logt lock - Lock the timeline position")
+        print("/logt unlock - Unlock the timeline position")
+        print("/logt linear - Use linear timeline scale")
+        print("/logt log - Use logarithmic timeline scale")
+        print("/logt base [number] - Set logarithm base (default 100, higher = steeper)")
+        print("/logt min [seconds] - Set minimum visible time (default 0.1)")
+        print("/logt fontsize [number] - Set stack text font size (6-30, default "..STACK_FONT_SIZE..")")
+        print("/logt reset - Reset timeline position, size, and font size to default")
+        print("/logt config - Show/hide configuration panel")
+    end
+end
 
 -- Event handling
 local EventFrame = CreateFrame("Frame")
@@ -831,23 +692,11 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
     if event == "PLAYER_LOGIN" then
         print("[LogTimeline] Loaded for The War Within")
         print("[LogTimeline] Current scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
-        for _, iconData in pairs(buffIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
-        for _, iconData in pairs(cooldownIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
-        for _, iconData in pairs(debuffIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
+        InitializeIcons()
         LoadPositionAndSize()
         CheckBuff()
         CheckCooldowns()
         CheckDebuff()
-        -- Sync config frame if open
         if ConfigFrame and ConfigFrame:IsShown() then
             WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)

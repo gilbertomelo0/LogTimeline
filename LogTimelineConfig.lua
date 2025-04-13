@@ -14,6 +14,7 @@ LOG_BASE = 100
 MIN_VISIBLE_TIME = 0.1
 
 -- Default Buffs to track on player
+-- Can be extended by LogTimelineDB.trackedSpells.buffs
 BUFFS_TO_TRACK = {
     "Renew",
     "Power Word: Shield",
@@ -26,6 +27,7 @@ BUFFS_TO_TRACK = {
 }
 
 -- Default Cooldowns to track (spellID, spellName, shouldGlow)
+-- Can be extended by LogTimelineDB.trackedSpells.cooldowns
 COOLDOWNS_TO_TRACK = {
     { spellID = 123904, spellName = "Invoke Xuen, the White Tiger", shouldGlow = true },
     { spellID = 137639, spellName = "Storm, Earth, and Fire", shouldGlow = true },
@@ -38,6 +40,7 @@ COOLDOWNS_TO_TRACK = {
 }
 
 -- Default Debuffs to track on target
+-- Can be extended by LogTimelineDB.trackedSpells.debuffs
 DEBUFFS_TO_TRACK = {
     "Shadow Word: Pain",
     "Vampiric Touch",

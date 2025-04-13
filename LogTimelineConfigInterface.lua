@@ -126,9 +126,20 @@ local function UpdateSpellList()
         row:SetSize(300, rowHeight)
         row:SetPoint("TOPLEFT", ScrollChild, "TOPLEFT", 0, yOffset)
         
+        -- Spell icon
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(20, 20)
+        icon:SetPoint("LEFT", row, "LEFT", 5, 0)
+        local spellInfo = C_Spell.GetSpellInfo(spell.spellID)
+        if spellInfo and spellInfo.iconID then
+            icon:SetTexture(spellInfo.iconID)
+        else
+            icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        end
+        
         -- Spell name and type
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        text:SetPoint("LEFT", row, "LEFT", 5, 0)
+        text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
         text:SetText(spell.name .. " (" .. spell.type .. ")")
         
         -- Checkbox
@@ -170,6 +181,7 @@ local function UpdateSpellList()
             CheckBuff()
             CheckCooldowns()
             CheckDebuff()
+            print("[LogTimeline] Updated timeline for " .. spell.name .. ", tracked: " .. (isChecked and "yes" or "no"))
         end)
         
         -- Set initial checked state
