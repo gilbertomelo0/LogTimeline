@@ -4,4 +4,5 @@
 ## SavedVariablesPerCharacter: LogTimelineDB
 
 LogTimelineConfig.lua
-LogTimeline.lua
+LogTimelineConfigInterface.lua
+LogTimelineCore.lua

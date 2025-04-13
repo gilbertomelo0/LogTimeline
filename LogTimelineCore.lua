@@ -1,12 +1,4 @@
--- LogTimeline.lua
-
--- Create the timeline frame
-local TimelineFrame = CreateFrame("Frame", "LogTimelineTimeline", UIParent)
-TimelineFrame.locked = true
-
--- Create the line texture
-local BuffLine = TimelineFrame:CreateTexture(nil, "BACKGROUND")
-BuffLine:SetColorTexture(1, 1, 1, 0.5)
+-- LogTimelineCore.lua
 
 -- Tables to store icons
 local buffIcons = {}
@@ -16,28 +8,57 @@ local activeBuffs = {}
 local phaseTimer = 0
 local overlapGroups = {}
 
--- Function to update timeline size
-local function UpdateTimelineSize()
-    local db = LogTimelineDB or {}
-    local totalDistance = db.totalDistance or 500
-    local lineThickness = db.lineThickness or 4
-    TimelineFrame:SetSize(totalDistance, lineThickness)
+TimelineFrame = CreateFrame("Frame", "LogTimelineTimeline", UIParent)
+TimelineFrame.locked = true
+BuffLine = TimelineFrame:CreateTexture(nil, "BACKGROUND")
+BuffLine:SetColorTexture(1, 1, 1, 1)
+BuffLine:SetAllPoints(TimelineFrame)
+TimelineFrame:SetSize(LogTimelineDB and LogTimelineDB.totalDistance or 500, LogTimelineDB and LogTimelineDB.lineThickness or 4)
+TimelineFrame:Show()
+BuffLine:Show()
+print("[LogTimeline] BuffLine created with alpha=" .. BuffLine:GetAlpha())
+
+-- UpdateTimelineSize
+function UpdateTimelineSize()
+    LogTimelineDB = LogTimelineDB or {}
+    local totalDistance = LogTimelineDB.totalDistance or 500
+    local lineThickness = LogTimelineDB.lineThickness or 4
+    if not TimelineFrame or not BuffLine then
+        print("[LogTimeline] TimelineFrame or BuffLine not ready in UpdateTimelineSize")
+        return
+    end
+    TimelineFrame:Show()
+    TimelineFrame:SetScale(1)
+    TimelineFrame:SetClampedToScreen(false)
+    BuffLine:SetColorTexture(1, 1, 1, 1)
+    BuffLine:SetAlpha(1)
+    BuffLine:ClearAllPoints()
     BuffLine:SetAllPoints(TimelineFrame)
+    BuffLine:SetDrawLayer("BACKGROUND", 0)
+    BuffLine:Show()
+    TimelineFrame:SetSize(totalDistance, lineThickness)
+    local width, height = TimelineFrame:GetSize()
+    local texWidth, texHeight = BuffLine:GetSize()
+    local point, relativeTo, relativePoint, xOfs, yOfs = TimelineFrame:GetPoint()
+    print("[LogTimeline] Set timeline size: width=" .. totalDistance .. ", height=" .. lineThickness)
+    print("[LogTimeline] Actual timeline size: width=" .. width .. ", height=" .. height)
+    print("[LogTimeline] BuffLine texture size: width=" .. (texWidth or 0) .. ", height=" .. (texHeight or 0))
+    print("[LogTimeline] BuffLine visible: " .. (BuffLine:IsVisible() and "yes" or "no"))
+    print("[LogTimeline] Timeline position: point=" .. (point or "none") .. ", x=" .. (xOfs or 0) .. ", y=" .. (yOfs or 0))
 end
 
--- Function to calculate position based on time remaining
-local function CalculatePosition(timeLeft, maxDuration)
-    local totalDistance = LogTimelineDB and LogTimelineDB.totalDistance or 500
-    if not LOGARITHMIC_SCALE then
-        return (totalDistance/2) - (totalDistance * (1 - (timeLeft / maxDuration)))
-    else
-        if timeLeft <= MIN_VISIBLE_TIME then
-            return (totalDistance/2) - totalDistance
-        end
-        
-        local normalizedTime = (timeLeft - MIN_VISIBLE_TIME) / (maxDuration - MIN_VISIBLE_TIME)
-        local logValue = math.log(1 + (LOG_BASE - 1) * normalizedTime) / math.log(LOG_BASE)
-        return (totalDistance/2) - (totalDistance * (1 - logValue))
+-- In SetTimelineLock
+function SetTimelineLock(state)
+    if not TimelineFrame then
+        print("[LogTimeline] TimelineFrame not ready in SetTimelineLock")
+        return
+    end
+    TimelineFrame.locked = state
+    TimelineFrame:EnableMouse(not state)
+    print("[LogTimeline] Timeline is now " .. (state and "locked" or "unlocked"))
+    -- Sync LockButton text if config frame exists
+    if LockButton then
+        LockButton:SetText(state and "Unlock" or "Lock and Close")
     end
 end
 
@@ -60,6 +81,220 @@ local function UpdateStackTextFontSize()
         end
     end
 end
+
+-- Function to check for buffs
+local function CheckBuff()
+    local currentTime = GetTime()
+    local foundBuffs = {}
+    
+    for _, iconData in pairs(buffIcons) do
+        iconData.isActive = false
+    end
+    
+    for i = 1, 40 do
+        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+        
+        if aura and buffIcons[aura.name] then
+            local iconData = buffIcons[aura.name]
+            iconData.icon:SetTexture(aura.icon)
+            
+            if aura.expirationTime then
+                iconData.expirationTime = aura.expirationTime
+                iconData.remainingTime = aura.expirationTime - currentTime
+            else
+                iconData.expirationTime = 0
+                iconData.remainingTime = 0
+            end
+            
+            if aura.applications and aura.applications > 1 then
+                iconData.stackText:SetText(aura.applications)
+            else
+                iconData.stackText:SetText("")
+            end
+            
+            iconData.isActive = true
+            iconData.frame:Show()
+            iconData.groupIndex = 0
+            foundBuffs[aura.name] = true
+        end
+    end
+    
+    for buffName, iconData in pairs(buffIcons) do
+        if not foundBuffs[buffName] then
+            iconData.isActive = false
+            iconData.frame:Hide()
+            iconData.xPos = 0
+            iconData.groupIndex = 0
+        end
+    end
+end
+
+-- Function to check for cooldowns
+local function CheckCooldowns()
+    local currentTime = GetTime()
+    
+    for _, iconData in pairs(cooldownIcons) do
+        local spellCooldownInfo = C_Spell.GetSpellCooldown(iconData.spellID)
+        
+        if spellCooldownInfo then
+            local start, duration, isEnabled = spellCooldownInfo.startTime, spellCooldownInfo.duration, spellCooldownInfo.isEnabled
+            
+            if isEnabled and duration and duration > 1.5 then
+                local remaining = (start + duration) - currentTime
+                if remaining > 0 then
+                    if not iconData.isActive or remaining > iconData.remainingTime then
+                        iconData.expirationTime = currentTime + remaining
+                    end
+                    
+                    iconData.remainingTime = remaining
+                    iconData.isActive = true
+                    iconData.frame:Show()
+                else
+                    iconData.isActive = false
+                    iconData.frame:Hide()
+                    iconData.xPos = 0
+                    iconData.groupIndex = 0
+                end
+            else
+                iconData.isActive = false
+                iconData.frame:Hide()
+                iconData.xPos = 0
+                iconData.groupIndex = 0
+            end
+        else
+            iconData.isActive = false
+            iconData.frame:Hide()
+            iconData.xPos = 0
+            iconData.groupIndex = 0
+        end
+    end
+end
+
+-- Function to check target debuffs
+local function CheckDebuff()
+    local currentTime = GetTime()
+    local foundDebuffs = {}
+    
+    for _, iconData in pairs(debuffIcons) do
+        iconData.isActive = false
+    end
+    
+    if UnitExists("target") then
+        for i = 1, 40 do
+            local aura = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL")
+            if aura and debuffIcons[aura.name] then
+                local iconData = debuffIcons[aura.name]
+                iconData.icon:SetTexture(aura.icon)
+                
+                if aura.expirationTime then
+                    iconData.expirationTime = aura.expirationTime
+                    iconData.remainingTime = aura.expirationTime - currentTime
+                else
+                    iconData.expirationTime = 0
+                    iconData.remainingTime = 0
+                end
+                
+                if aura.applications and aura.applications > 1 then
+                    iconData.stackText:SetText(aura.applications)
+                else
+                    iconData.stackText:SetText("")
+                end
+                
+                iconData.isActive = true
+                iconData.frame:Show()
+                iconData.groupIndex = 0
+                foundDebuffs[aura.name] = true
+            end
+        end
+    end
+    
+    for debuffName, iconData in pairs(debuffIcons) do
+        if not foundDebuffs[debuffName] then
+            iconData.isActive = false
+            iconData.frame:Hide()
+            iconData.xPos = 0
+            iconData.groupIndex = 0
+        end
+    end
+end
+
+-- LoadPositionAndSize
+local function LoadPositionAndSize()
+    LogTimelineDB = LogTimelineDB or {}
+    if LogTimelineDB.point then
+        TimelineFrame:ClearAllPoints()
+        TimelineFrame:SetPoint(
+            LogTimelineDB.point,
+            UIParent,
+            LogTimelineDB.relativePoint,
+            LogTimelineDB.xOfs,
+            LogTimelineDB.yOfs
+        )
+    else
+        TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
+    end
+    print("[LogTimeline] Loading position and size")
+    UpdateTimelineSize()
+    UpdateStackTextFontSize()
+end
+
+-- In the PLAYER_LOGIN event handler, after LoadPositionAndSize()
+local EventFrame = CreateFrame("Frame")
+EventFrame:RegisterEvent("PLAYER_LOGIN")
+EventFrame:SetScript("OnEvent", function(self, event, unit)
+    if event == "PLAYER_LOGIN" then
+        print("[LogTimeline] Loaded for The War Within")
+        print("[LogTimeline] Current scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
+        for _, iconData in pairs(buffIcons) do
+            iconData.frame:Hide()
+            iconData.isActive = false
+        end
+        for _, iconData in pairs(cooldownIcons) do
+            iconData.frame:Hide()
+            iconData.isActive = false
+        end
+        for _, iconData in pairs(debuffIcons) do
+            iconData.frame:Hide()
+            iconData.isActive = false
+        end
+        LoadPositionAndSize()
+        CheckBuff()
+        CheckCooldowns()
+        CheckDebuff()
+        -- Sync config frame if open
+        if ConfigFrame and ConfigFrame:IsShown() then
+            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            LengthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            if LockButton then
+                LockButton:SetText(TimelineFrame.locked and "Unlock" or "Lock and Close")
+            end
+        end
+    elseif event == "UNIT_AURA" then
+        -- ... (rest of the event handler unchanged)
+    end
+end)
+
+
+
+-- Function to calculate position based on time remaining
+local function CalculatePosition(timeLeft, maxDuration)
+    local totalDistance = LogTimelineDB and LogTimelineDB.totalDistance or 500
+    if not LOGARITHMIC_SCALE then
+        return (totalDistance/2) - (totalDistance * (1 - (timeLeft / maxDuration)))
+    else
+        if timeLeft <= MIN_VISIBLE_TIME then
+            return (totalDistance/2) - totalDistance
+        end
+        
+        local normalizedTime = (timeLeft - MIN_VISIBLE_TIME) / (maxDuration - MIN_VISIBLE_TIME)
+        local logValue = math.log(1 + (LOG_BASE - 1) * normalizedTime) / math.log(LOG_BASE)
+        return (totalDistance/2) - (totalDistance * (1 - logValue))
+    end
+end
+
+
 
 -- Function to create icon frames
 local function CreateBuffIcon(buffName)
@@ -141,125 +376,28 @@ for _, debuffName in ipairs(DEBUFFS_TO_TRACK) do
     debuffIcons[debuffName].isDebuff = true
 end
 
+
 -- Make the timeline movable when unlocked
 TimelineFrame:SetMovable(true)
 TimelineFrame:EnableMouse(false)
 TimelineFrame:SetScript("OnMouseDown", function(self, button)
     if button == "LeftButton" and not self.locked then
+        print("[LogTimeline] Starting to move timeline")
         self:StartMoving()
     end
 end)
 TimelineFrame:SetScript("OnMouseUp", function(self)
-    self:StopMovingOrSizing()
-    -- Save the new position when movement stops
-    local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
-    LogTimelineDB = LogTimelineDB or {}
-    LogTimelineDB.point = point
-    LogTimelineDB.relativePoint = relativePoint
-    LogTimelineDB.xOfs = xOfs
-    LogTimelineDB.yOfs = yOfs
-end)
-
--- Function to load saved position and size
-local function LoadPositionAndSize()
-    LogTimelineDB = LogTimelineDB or {}
-    if LogTimelineDB.point then
-        TimelineFrame:ClearAllPoints()
-        TimelineFrame:SetPoint(
-            LogTimelineDB.point,
-            UIParent,
-            LogTimelineDB.relativePoint,
-            LogTimelineDB.xOfs,
-            LogTimelineDB.yOfs
-        )
-    else
-        TimelineFrame:SetPoint("CENTER", UIParent, "CENTER", -100, 0)
-    end
-    UpdateTimelineSize()
-    UpdateStackTextFontSize()
-end
-
--- Function to lock/unlock the timeline
-local function SetTimelineLock(state)
-    TimelineFrame.locked = state
-    TimelineFrame:EnableMouse(not state)
-    print("[LogTimeline] Timeline is now " .. (state and "locked" or "unlocked"))
-end
-
--- Create the interface frame
-local ConfigFrame = CreateFrame("Frame", "LogTimelineConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-ConfigFrame:SetSize(300, 200)
-ConfigFrame:SetPoint("CENTER")
-ConfigFrame:Hide()
-ConfigFrame:SetMovable(true)
-ConfigFrame:EnableMouse(true)
-ConfigFrame:RegisterForDrag("LeftButton")
-ConfigFrame:SetScript("OnDragStart", ConfigFrame.StartMoving)
-ConfigFrame:SetScript("OnDragStop", ConfigFrame.StopMovingOrSizing)
-
--- Title
-ConfigFrame.Title = ConfigFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-ConfigFrame.Title:SetPoint("TOP", ConfigFrame, "TOP", 0, -5)
-ConfigFrame.Title:SetText("LogTimeline Settings")
-
--- Lock and Close Button
-local LockButton = CreateFrame("Button", nil, ConfigFrame, "UIPanelButtonTemplate")
-LockButton:SetSize(100, 25)
-LockButton:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -30)
-LockButton:SetText("Lock and Close")
-LockButton:SetScript("OnClick", function()
-    if TimelineFrame.locked then
-        SetTimelineLock(false)
-        LockButton:SetText("Lock and Close")
-    else
-        SetTimelineLock(true)
-        ConfigFrame:Hide()
-        LockButton:SetText("Unlock")
+    if not self.locked then
+        self:StopMovingOrSizing()
+        local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
+        LogTimelineDB = LogTimelineDB or {}
+        LogTimelineDB.point = point
+        LogTimelineDB.relativePoint = relativePoint
+        LogTimelineDB.xOfs = xOfs
+        LogTimelineDB.yOfs = yOfs
+        print("[LogTimeline] Timeline moved to: point=" .. (point or "none") .. ", x=" .. (xOfs or 0) .. ", y=" .. (yOfs or 0))
     end
 end)
-LockButton:SetScript("OnShow", function()
-    LockButton:SetText(TimelineFrame.locked and "Unlock" or "Lock and Close")
-end)
-
--- Width Slider
-local WidthSlider = CreateFrame("Slider", "LogTimelineWidthSlider", ConfigFrame, "OptionsSliderTemplate")
-WidthSlider:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -70)
-WidthSlider:SetWidth(260)
-WidthSlider:SetMinMaxValues(1, 20)
-WidthSlider:SetValueStep(1)
-WidthSlider.Text:SetText("Line Thickness")
-WidthSlider.Low:SetText("1")
-WidthSlider.High:SetText("20")
-WidthSlider:SetScript("OnValueChanged", function(self, value)
-    local roundedValue = math.floor(value + 0.5) -- Rounds to nearest integer
-    LogTimelineDB = LogTimelineDB or {}
-    LogTimelineDB.lineThickness = roundedValue
-    self:SetValue(roundedValue) -- Ensure slider snaps to rounded value
-    UpdateTimelineSize()
-    self.Value:SetText(roundedValue)
-end)
-WidthSlider.Value = WidthSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-WidthSlider.Value:SetPoint("BOTTOM", WidthSlider, "BOTTOM", 0, -5)
-
--- Length Slider
-local LengthSlider = CreateFrame("Slider", "LogTimelineLengthSlider", ConfigFrame, "OptionsSliderTemplate")
-LengthSlider:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -120)
-LengthSlider:SetWidth(260)
-LengthSlider:SetMinMaxValues(100, 1000)
-LengthSlider:SetValueStep(10)
-LengthSlider.Text:SetText("Line Length")
-LengthSlider.Low:SetText("100")
-LengthSlider.High:SetText("1000")
-LengthSlider:SetScript("OnValueChanged", function(self, value)
-    local roundedValue = math.floor(value + 0.5) -- Rounds to nearest integer
-    LogTimelineDB = LogTimelineDB or {}
-    LogTimelineDB.totalDistance = roundedValue
-    self:SetValue(roundedValue) -- Ensure slider snaps to rounded value
-    UpdateTimelineSize()
-    self.Value:SetText(roundedValue)
-end)
-LengthSlider.Value = LengthSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-LengthSlider.Value:SetPoint("BOTTOM", LengthSlider, "BOTTOM", 0, -5)
 
 -- Slash command handler
 SLASH_LOGTIMELINE1 = "/logt"
@@ -273,6 +411,24 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
     elseif command == "unlock" then
         SetTimelineLock(false)
         if ConfigFrame:IsShown() then LockButton:SetText("Lock and Close") end
+    elseif command == "debuglayer" then
+        print("[LogTimeline] Timeline frame level: " .. TimelineFrame:GetFrameLevel())
+        print("[LogTimeline] BuffLine draw layer: " .. BuffLine:GetDrawLayer())
+        for _, iconData in pairs(buffIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Buff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end
+        for _, iconData in pairs(cooldownIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Cooldown icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end
+        for _, iconData in pairs(debuffIcons) do
+            if iconData.isActive then
+                print("[LogTimeline] Debuff icon " .. iconData.name .. " frame level: " .. iconData.frame:GetFrameLevel())
+            end
+        end    
     elseif command == "linear" then
         LOGARITHMIC_SCALE = false
         print("[LogTimeline] Using linear timeline scale")
@@ -463,17 +619,20 @@ local function UpdateAlphaPhasing()
     end
 end
 
--- Update the UpdateIconPositions function
+-- UpdateIconPositions (ensure icons are in front)
 local function UpdateIconPositions()
     local currentTime = GetTime()
-    
     for _, iconData in pairs(buffIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime then
             iconData.remainingTime = iconData.expirationTime - currentTime
             local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
             iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
             iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10) -- Higher level
             iconData.frame:Show()
+            if iconData.stackText then
+                iconData.stackText:SetDrawLayer("OVERLAY", 1)
+            end
         else
             iconData.isActive = false
             iconData.frame:Hide()
@@ -481,15 +640,19 @@ local function UpdateIconPositions()
             iconData.groupIndex = 0
         end
     end
-    
     for _, iconData in pairs(cooldownIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime then
             iconData.remainingTime = iconData.expirationTime - currentTime
             local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
             iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
             iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
             iconData.frame:Show()
+            if iconData.stackText then
+                iconData.stackText:SetDrawLayer("OVERLAY", 1)
+            end
             if iconData.glow and iconData.shouldGlow then
+                iconData.glow:SetDrawLayer("OVERLAY", 2)
                 iconData.glow:Show()
             end
         else
@@ -502,14 +665,17 @@ local function UpdateIconPositions()
             iconData.groupIndex = 0
         end
     end
-    
     for _, iconData in pairs(debuffIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime then
             iconData.remainingTime = iconData.expirationTime - currentTime
             local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
             iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
             iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
             iconData.frame:Show()
+            if iconData.stackText then
+                iconData.stackText:SetDrawLayer("OVERLAY", 1)
+            end
         else
             iconData.isActive = false
             iconData.frame:Hide()
@@ -517,147 +683,12 @@ local function UpdateIconPositions()
             iconData.groupIndex = 0
         end
     end
-    
     UpdateOverlapGroups()
     UpdateAlphaPhasing()
     phaseTimer = phaseTimer + UPDATE_INTERVAL
 end
 
--- Function to check for buffs
-local function CheckBuff()
-    local currentTime = GetTime()
-    local foundBuffs = {}
-    
-    for _, iconData in pairs(buffIcons) do
-        iconData.isActive = false
-    end
-    
-    for i = 1, 40 do
-        local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-        
-        if aura and buffIcons[aura.name] then
-            local iconData = buffIcons[aura.name]
-            iconData.icon:SetTexture(aura.icon)
-            
-            if aura.expirationTime then
-                iconData.expirationTime = aura.expirationTime
-                iconData.remainingTime = aura.expirationTime - currentTime
-            else
-                iconData.expirationTime = 0
-                iconData.remainingTime = 0
-            end
-            
-            if aura.applications and aura.applications > 1 then
-                iconData.stackText:SetText(aura.applications)
-            else
-                iconData.stackText:SetText("")
-            end
-            
-            iconData.isActive = true
-            iconData.frame:Show()
-            iconData.groupIndex = 0
-            foundBuffs[aura.name] = true
-        end
-    end
-    
-    for buffName, iconData in pairs(buffIcons) do
-        if not foundBuffs[buffName] then
-            iconData.isActive = false
-            iconData.frame:Hide()
-            iconData.xPos = 0
-            iconData.groupIndex = 0
-        end
-    end
-end
 
--- Function to check for cooldowns
-local function CheckCooldowns()
-    local currentTime = GetTime()
-    
-    for _, iconData in pairs(cooldownIcons) do
-        local spellCooldownInfo = C_Spell.GetSpellCooldown(iconData.spellID)
-        
-        if spellCooldownInfo then
-            local start, duration, isEnabled = spellCooldownInfo.startTime, spellCooldownInfo.duration, spellCooldownInfo.isEnabled
-            
-            if isEnabled and duration and duration > 1.5 then
-                local remaining = (start + duration) - currentTime
-                if remaining > 0 then
-                    if not iconData.isActive or remaining > iconData.remainingTime then
-                        iconData.expirationTime = currentTime + remaining
-                    end
-                    
-                    iconData.remainingTime = remaining
-                    iconData.isActive = true
-                    iconData.frame:Show()
-                else
-                    iconData.isActive = false
-                    iconData.frame:Hide()
-                    iconData.xPos = 0
-                    iconData.groupIndex = 0
-                end
-            else
-                iconData.isActive = false
-                iconData.frame:Hide()
-                iconData.xPos = 0
-                iconData.groupIndex = 0
-            end
-        else
-            iconData.isActive = false
-            iconData.frame:Hide()
-            iconData.xPos = 0
-            iconData.groupIndex = 0
-        end
-    end
-end
-
--- Function to check target debuffs
-local function CheckDebuff()
-    local currentTime = GetTime()
-    local foundDebuffs = {}
-    
-    for _, iconData in pairs(debuffIcons) do
-        iconData.isActive = false
-    end
-    
-    if UnitExists("target") then
-        for i = 1, 40 do
-            local aura = C_UnitAuras.GetAuraDataByIndex("target", i, "HARMFUL")
-            if aura and debuffIcons[aura.name] then
-                local iconData = debuffIcons[aura.name]
-                iconData.icon:SetTexture(aura.icon)
-                
-                if aura.expirationTime then
-                    iconData.expirationTime = aura.expirationTime
-                    iconData.remainingTime = aura.expirationTime - currentTime
-                else
-                    iconData.expirationTime = 0
-                    iconData.remainingTime = 0
-                end
-                
-                if aura.applications and aura.applications > 1 then
-                    iconData.stackText:SetText(aura.applications)
-                else
-                    iconData.stackText:SetText("")
-                end
-                
-                iconData.isActive = true
-                iconData.frame:Show()
-                iconData.groupIndex = 0
-                foundDebuffs[aura.name] = true
-            end
-        end
-    end
-    
-    for debuffName, iconData in pairs(debuffIcons) do
-        if not foundDebuffs[debuffName] then
-            iconData.isActive = false
-            iconData.frame:Hide()
-            iconData.xPos = 0
-            iconData.groupIndex = 0
-        end
-    end
-end
 
 -- Event handling
 local EventFrame = CreateFrame("Frame")
@@ -685,6 +716,16 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
         CheckBuff()
         CheckCooldowns()
         CheckDebuff()
+        -- Sync config frame if open
+        if ConfigFrame and ConfigFrame:IsShown() then
+            WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)
+            LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            LengthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            if LockButton then
+                LockButton:SetText(TimelineFrame.locked and "Unlock" or "Lock and Close")
+            end
+        end
     elseif event == "UNIT_AURA" then
         if unit == "player" then
             CheckBuff()
