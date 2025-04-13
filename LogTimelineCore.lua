@@ -14,9 +14,46 @@ BuffLine = TimelineFrame:CreateTexture(nil, "BACKGROUND")
 BuffLine:SetColorTexture(1, 1, 1, 1)
 BuffLine:SetAllPoints(TimelineFrame)
 TimelineFrame:SetSize(LogTimelineDB and LogTimelineDB.totalDistance or 500, LogTimelineDB and LogTimelineDB.lineThickness or 4)
+TimelineFrame:SetHitRectInsets(-20, -20, -20, -20) -- Expand clickable area
 TimelineFrame:Show()
 BuffLine:Show()
 print("[LogTimeline] BuffLine created with alpha=" .. BuffLine:GetAlpha())
+
+-- Make the timeline movable when unlocked
+TimelineFrame:SetMovable(true)
+TimelineFrame:EnableMouse(false)
+TimelineFrame:SetScript("OnMouseDown", function(self, button)
+    if button == "LeftButton" and not self.locked then
+        print("[LogTimeline] Starting to move timeline")
+        self:StartMoving()
+    end
+end)
+TimelineFrame:SetScript("OnMouseUp", function(self)
+    if not self.locked then
+        self:StopMovingOrSizing()
+        local point, relativeTo, relativePoint, xOfs, yOfs = self:GetPoint()
+        LogTimelineDB = LogTimelineDB or {}
+        LogTimelineDB.point = point
+        LogTimelineDB.relativePoint = relativePoint
+        LogTimelineDB.xOfs = xOfs
+        LogTimelineDB.yOfs = yOfs
+        print("[LogTimeline] Timeline moved to: point=" .. (point or "none") .. ", x=" .. (xOfs or 0) .. ", y=" .. (yOfs or 0))
+    end
+end)
+
+-- SetTimelineLock
+function SetTimelineLock(state)
+    if not TimelineFrame then
+        print("[LogTimeline] TimelineFrame not ready in SetTimelineLock")
+        return
+    end
+    TimelineFrame.locked = state
+    TimelineFrame:EnableMouse(not state)
+    print("[LogTimeline] Timeline is now " .. (state and "locked" or "unlocked") .. ", mouse enabled: " .. (TimelineFrame:IsMouseEnabled() and "yes" or "no"))
+    if LockButton then
+        LockButton:SetText(state and "Unlock" or "Lock and Close")
+    end
+end
 
 -- UpdateTimelineSize
 function UpdateTimelineSize()
@@ -47,24 +84,9 @@ function UpdateTimelineSize()
     print("[LogTimeline] Timeline position: point=" .. (point or "none") .. ", x=" .. (xOfs or 0) .. ", y=" .. (yOfs or 0))
 end
 
--- In SetTimelineLock
-function SetTimelineLock(state)
-    if not TimelineFrame then
-        print("[LogTimeline] TimelineFrame not ready in SetTimelineLock")
-        return
-    end
-    TimelineFrame.locked = state
-    TimelineFrame:EnableMouse(not state)
-    print("[LogTimeline] Timeline is now " .. (state and "locked" or "unlocked"))
-    -- Sync LockButton text if config frame exists
-    if LockButton then
-        LockButton:SetText(state and "Unlock" or "Lock and Close")
-    end
-end
-
 -- Function to update stack text font size
 local function UpdateStackTextFontSize()
-    local fontSize = LogTimelineDB and LogTimelineDB.stackFontSize or 10 -- Default font size
+    local fontSize = (LogTimelineDB and LogTimelineDB.stackFontSize) or STACK_FONT_SIZE or 10
     for _, iconData in pairs(buffIcons) do
         if iconData.stackText then
             iconData.stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
@@ -82,6 +104,118 @@ local function UpdateStackTextFontSize()
     end
 end
 
+-- Function to create icon frames
+local function CreateBuffIcon(buffName)
+    local iconFrame = CreateFrame("Frame", "LogTimelineIcon_"..buffName, UIParent)
+    iconFrame:SetSize(32, 32)
+    iconFrame:SetPoint("CENTER", TimelineFrame, "CENTER", (LogTimelineDB and LogTimelineDB.totalDistance or 500)/2, 0)
+    iconFrame:Hide()
+    iconFrame:SetAlpha(1)
+    
+    local iconTexture = iconFrame:CreateTexture(nil, "ARTWORK")
+    iconTexture:SetAllPoints(iconFrame)
+    
+    local stackText = iconFrame:CreateFontString(nil, "OVERLAY")
+    stackText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+    stackText:SetTextColor(1, 1, 1, 1)
+    local fontSize = (LogTimelineDB and LogTimelineDB.stackFontSize) or STACK_FONT_SIZE or 10
+    stackText:SetFont("Fonts\\FRIZQT__.TTF", fontSize, "OUTLINE")
+    stackText:SetDrawLayer("OVERLAY", 1)
+    
+    return {
+        frame = iconFrame,
+        icon = iconTexture,
+        stackText = stackText,
+        remainingTime = 0,
+        expirationTime = 0,
+        name = buffName,
+        xPos = 0,
+        groupIndex = 0,
+        phaseOffset = 0,
+        isActive = false,
+        isCooldown = false,
+        isDebuff = false
+    }
+end
+
+-- Function to create cooldown icon frames with selective glow
+local function CreateCooldownIcon(spellID, spellName, shouldGlow)
+    local iconData = CreateBuffIcon(spellName)
+    iconData.isCooldown = true
+    iconData.spellID = spellID
+    iconData.shouldGlow = shouldGlow
+    
+    iconData.cooldownFrame = CreateFrame("Frame", "LogTimelineCooldown_"..spellName, iconData.frame)
+    iconData.cooldownFrame:SetAllPoints(iconData.frame)
+    
+    if shouldGlow then
+        iconData.glow = iconData.frame:CreateTexture(nil, "OVERLAY")
+        iconData.glow:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+        iconData.glow:SetPoint("CENTER", iconData.frame, "CENTER")
+        iconData.glow:SetSize(48, 48)
+        iconData.glow:SetBlendMode("ADD")
+        iconData.glow:SetVertexColor(1, 0.8, 0, 0.8)
+        iconData.glow:SetDrawLayer("OVERLAY", 2)
+        iconData.glow:Hide()
+    end
+    
+    local spellInfo = C_Spell.GetSpellInfo(spellID)
+    if spellInfo then
+        iconData.icon:SetTexture(spellInfo.iconID)
+    end
+    
+    return iconData
+end
+
+-- Initialize all icons
+local function InitializeIcons()
+    buffIcons = {}
+    cooldownIcons = {}
+    debuffIcons = {}
+    
+    -- Initialize default tracking tables
+    local trackedBuffs = {}
+    local trackedCooldowns = {}
+    local trackedDebuffs = {}
+    
+    -- Merge defaults with saved variables
+    LogTimelineDB = LogTimelineDB or {}
+    LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
+    
+    for _, buffName in ipairs(BUFFS_TO_TRACK) do
+        trackedBuffs[buffName] = true
+    end
+    for _, cooldownInfo in ipairs(COOLDOWNS_TO_TRACK) do
+        trackedCooldowns[cooldownInfo.spellName] = {spellID = cooldownInfo.spellID, shouldGlow = cooldownInfo.shouldGlow}
+    end
+    for _, debuffName in ipairs(DEBUFFS_TO_TRACK) do
+        trackedDebuffs[debuffName] = true
+    end
+    
+    -- Add saved tracked spells
+    for buffName, _ in pairs(LogTimelineDB.trackedSpells.buffs) do
+        trackedBuffs[buffName] = true
+    end
+    for spellName, info in pairs(LogTimelineDB.trackedSpells.cooldowns) do
+        trackedCooldowns[spellName] = {spellID = info.spellID, shouldGlow = info.shouldGlow}
+    end
+    for debuffName, _ in pairs(LogTimelineDB.trackedSpells.debuffs) do
+        trackedDebuffs[debuffName] = true
+    end
+    
+    -- Create icons
+    for buffName, _ in pairs(trackedBuffs) do
+        buffIcons[buffName] = CreateBuffIcon(buffName)
+    end
+    for spellName, info in pairs(trackedCooldowns) do
+        cooldownIcons[spellName] = CreateCooldownIcon(info.spellID, spellName, info.shouldGlow)
+    end
+    for debuffName, _ in pairs(trackedDebuffs) do
+        debuffIcons[debuffName] = CreateBuffIcon(debuffName)
+        debuffIcons[debuffName].isDebuff = true
+    end
+end
+
 -- Function to check for buffs
 local function CheckBuff()
     local currentTime = GetTime()
@@ -93,7 +227,6 @@ local function CheckBuff()
     
     for i = 1, 40 do
         local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
-        
         if aura and buffIcons[aura.name] then
             local iconData = buffIcons[aura.name]
             iconData.icon:SetTexture(aura.icon)
@@ -238,30 +371,21 @@ local function LoadPositionAndSize()
     UpdateStackTextFontSize()
 end
 
--- In the PLAYER_LOGIN event handler, after LoadPositionAndSize()
+-- Initialize icons after PLAYER_LOGIN
 local EventFrame = CreateFrame("Frame")
 EventFrame:RegisterEvent("PLAYER_LOGIN")
+EventFrame:RegisterEvent("UNIT_AURA")
+EventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+EventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 EventFrame:SetScript("OnEvent", function(self, event, unit)
     if event == "PLAYER_LOGIN" then
         print("[LogTimeline] Loaded for The War Within")
         print("[LogTimeline] Current scale: "..(LOGARITHMIC_SCALE and "Logarithmic (base "..LOG_BASE..")" or "Linear"))
-        for _, iconData in pairs(buffIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
-        for _, iconData in pairs(cooldownIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
-        for _, iconData in pairs(debuffIcons) do
-            iconData.frame:Hide()
-            iconData.isActive = false
-        end
+        InitializeIcons()
         LoadPositionAndSize()
         CheckBuff()
         CheckCooldowns()
         CheckDebuff()
-        -- Sync config frame if open
         if ConfigFrame and ConfigFrame:IsShown() then
             WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)
@@ -272,10 +396,17 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
             end
         end
     elseif event == "UNIT_AURA" then
-        -- ... (rest of the event handler unchanged)
+        if unit == "player" then
+            CheckBuff()
+        elseif unit == "target" then
+            CheckDebuff()
+        end
+    elseif event == "SPELL_UPDATE_COOLDOWN" then
+        CheckCooldowns()
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        CheckDebuff()
     end
 end)
-
 
 
 -- Function to calculate position based on time remaining
