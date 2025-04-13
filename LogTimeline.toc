@@ -1,8 +1,8 @@
 ## Interface: 111000
 ## Title: LogTimeline
-## Notes: Tracks buffs, cooldowns, and target debuffs on a logarithmic timeline
+## Notes: A timeline for tracking buffs, cooldowns, and debuffs
 ## SavedVariablesPerCharacter: LogTimelineDB
 
 LogTimelineConfig.lua
-LogTimelineConfigInterface.lua
 LogTimelineCore.lua
+LogTimelineConfigInterface.lua
