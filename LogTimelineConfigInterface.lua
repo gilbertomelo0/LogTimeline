@@ -86,6 +86,7 @@ local function UpdateSpellList()
     for _, row in ipairs(spellRows) do
         row:Hide()
         row.checkBox:SetScript("OnClick", nil)
+        if row.glow then row.glow:Hide() end
     end
     wipe(spellRows)
     
@@ -151,6 +152,17 @@ local function UpdateSpellList()
             icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
         end
         
+        -- Add glow for cooldowns
+        if spell.type == "Cooldown" then
+            local glow = row:CreateTexture(nil, "OVERLAY")
+            glow:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+            glow:SetPoint("CENTER", icon, "CENTER")
+            glow:SetSize(30, 30) -- Slightly larger than icon
+            glow:SetBlendMode("ADD")
+            glow:SetVertexColor(1, 0.8, 0, 0.8) -- Yellow glow
+            row.glow = glow
+        end
+        
         -- Create spell name text, offset to right of icon
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
@@ -175,7 +187,7 @@ local function UpdateSpellList()
                 end
             elseif spell.type == "Cooldown" then
                 if isChecked then
-                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = {spellID = spell.spellID, shouldGlow = false}
+                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = {spellID = spell.spellID, shouldGlow = true}
                 else
                     LogTimelineDB.trackedSpells.cooldowns[spell.name] = nil
                 end
@@ -220,6 +232,23 @@ end
 -- Handle Learning Mode visibility and event registration
 LearningModeConfigFrame:SetScript("OnShow", function()
     detectedSpells = {buffs = {}, cooldowns = {}, debuffs = {}}
+    
+    -- Scan spellbook for spells with cooldowns
+    local i = 1
+    while true do
+        local spellInfo = C_SpellBook.GetSpellBookItemInfo(i, Enum.SpellBookSpellBank.Player)
+        if not spellInfo then break end
+        if spellInfo.actionType == "spell" and spellInfo.isPassive == false then
+            local spellID = spellInfo.spellID
+            local spellName = C_Spell.GetSpellInfo(spellID).name
+            local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
+            if spellName and spellCooldownInfo and spellCooldownInfo.duration and spellCooldownInfo.duration > 0 then
+                detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
+            end
+        end
+        i = i + 1
+    end
+    
     UpdateSpellList()
     LearningModeConfigFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     LearningModeConfigFrame:RegisterEvent("UNIT_AURA")
@@ -235,20 +264,20 @@ end)
 -- Handle spell detection events
 LearningModeConfigFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        local timestamp, subEvent, _, sourceGUID, _, _, _, destGUID, _, _, _, spellID, spellName = CombatLogGetCurrentEventInfo()
-        local playerGUID = UnitGUID("player")
-        if sourceGUID == playerGUID then
+        local timestamp, subEvent, _, sourceGUID, sourceName, _, _, destGUID, destName, _, _, spellID, spellName = CombatLogGetCurrentEventInfo()
+        if sourceGUID == UnitGUID("player") then
             if subEvent == "SPELL_CAST_SUCCESS" then
-                local spellInfo = C_Spell.GetSpellCooldown(spellID)
-                if spellInfo and spellInfo.duration and spellInfo.duration > 1.5 then
+                local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
+                local duration = spellCooldownInfo and spellCooldownInfo.duration or 0
+                if duration > 0 then
                     detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
                     UpdateSpellList()
                 end
             elseif subEvent == "SPELL_AURA_APPLIED" then
-                if destGUID == playerGUID then
+                if destGUID == UnitGUID("player") then
                     detectedSpells.buffs[spellName] = detectedSpells.buffs[spellName] or {spellID = spellID}
                     UpdateSpellList()
-                elseif UnitGUID("target") == destGUID then
+                elseif destGUID == UnitGUID("target") then
                     detectedSpells.debuffs[spellName] = detectedSpells.debuffs[spellName] or {spellID = spellID}
                     UpdateSpellList()
                 end
