@@ -229,30 +229,99 @@ local function UpdateSpellList()
     ScrollChild:SetHeight(math.abs(yOffset))
 end
 
+-- Queue for delayed cooldown checks
+local pendingCooldownChecks = {}
+
+-- Check cooldown after a delay to ensure accurate data
+local function CheckCooldownDelayed(spellID, spellName)
+    local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
+    local duration = spellCooldownInfo and spellCooldownInfo.duration or 0
+    if duration == 0 then
+        -- Check charges for spells like Angelic Feather
+        local chargesInfo = C_Spell.GetSpellCharges(spellID)
+        if chargesInfo then
+            duration = chargesInfo.cooldownDuration or 0
+        end
+    end
+    print("[LogTimeline Debug] Delayed check: " .. spellName .. " (ID: " .. spellID .. ", cooldown: " .. duration .. "s)")
+    if duration > 0 then
+        detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
+        UpdateSpellList()
+    end
+end
+
+-- Process pending cooldown checks
+local function ProcessPendingCooldowns()
+    for spellID, spellName in pairs(pendingCooldownChecks) do
+        CheckCooldownDelayed(spellID, spellName)
+        pendingCooldownChecks[spellID] = nil
+    end
+end
+
 -- Handle Learning Mode visibility and event registration
 LearningModeConfigFrame:SetScript("OnShow", function()
     detectedSpells = {buffs = {}, cooldowns = {}, debuffs = {}}
     
     -- Scan spellbook for spells with cooldowns
-    local i = 1
-    while true do
-        local spellInfo = C_SpellBook.GetSpellBookItemInfo(i, Enum.SpellBookSpellBank.Player)
-        if not spellInfo then break end
-        if spellInfo.actionType == "spell" and spellInfo.isPassive == false then
-            local spellID = spellInfo.spellID
+    for _, spellBook in pairs({Enum.SpellBookSpellBank.Player, Enum.SpellBookSpellBank.Pet}) do
+        local i = 1
+        while true do
+            local spellInfo = C_SpellBook.GetSpellBookItemInfo(i, spellBook)
+            if not spellInfo then break end
+            if spellInfo.actionType == "spell" and not spellInfo.isPassive then
+                local spellID = spellInfo.spellID
+                local spellName = C_Spell.GetSpellInfo(spellID).name
+                local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
+                local duration = spellCooldownInfo and spellCooldownInfo.duration or 0
+                if duration == 0 then
+                    local chargesInfo = C_Spell.GetSpellCharges(spellID)
+                    if chargesInfo then
+                        duration = chargesInfo.cooldownDuration or 0
+                    end
+                end
+                if spellName and duration > 0 then
+                    detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
+                end
+            end
+            i = i + 1
+        end
+    end
+    
+    -- Scan action bars for additional spells (e.g., racials)
+    for slot = 1, 120 do
+        local actionType, spellID = GetActionInfo(slot)
+        if actionType == "spell" and spellID then
             local spellName = C_Spell.GetSpellInfo(spellID).name
             local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
-            if spellName and spellCooldownInfo and spellCooldownInfo.duration and spellCooldownInfo.duration > 0 then
+            local duration = spellCooldownInfo and spellCooldownInfo.duration or 0
+            if duration == 0 then
+                local chargesInfo = C_Spell.GetSpellCharges(spellID)
+                if chargesInfo then
+                    duration = chargesInfo.cooldownDuration or 0
+                end
+            end
+            if spellName and duration > 0 then
                 detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
             end
         end
-        i = i + 1
+    end
+    
+    -- Debug: Print detected cooldowns
+    print("[LogTimeline Debug] Cooldowns detected:")
+    for spellName, info in pairs(detectedSpells.cooldowns) do
+        print(" - " .. spellName .. " (ID: " .. info.spellID .. ")")
     end
     
     UpdateSpellList()
     LearningModeConfigFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     LearningModeConfigFrame:RegisterEvent("UNIT_AURA")
     LearningModeConfigFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
+    
+    -- Start a frame to process delayed cooldown checks
+    local delayFrame = CreateFrame("Frame")
+    delayFrame:SetScript("OnUpdate", function(self, elapsed)
+        ProcessPendingCooldowns()
+    end)
 end)
 
 LearningModeConfigFrame:SetScript("OnHide", function()
@@ -267,13 +336,16 @@ LearningModeConfigFrame:SetScript("OnEvent", function(self, event, ...)
         local timestamp, subEvent, _, sourceGUID, sourceName, _, _, destGUID, destName, _, _, spellID, spellName = CombatLogGetCurrentEventInfo()
         if sourceGUID == UnitGUID("player") then
             if subEvent == "SPELL_CAST_SUCCESS" then
-                local spellCooldownInfo = C_Spell.GetSpellCooldown(spellID)
-                local duration = spellCooldownInfo and spellCooldownInfo.duration or 0
-                if duration > 0 then
-                    detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
-                    UpdateSpellList()
+                -- Queue cooldown check for the next frame
+                if spellName and spellID then
+                    pendingCooldownChecks[spellID] = spellName
                 end
             elseif subEvent == "SPELL_AURA_APPLIED" then
+                -- Queue cooldown check for aura-applying spells
+                if spellName and spellID then
+                    pendingCooldownChecks[spellID] = spellName
+                end
+                -- Detect buffs and debuffs
                 if destGUID == UnitGUID("player") then
                     detectedSpells.buffs[spellName] = detectedSpells.buffs[spellName] or {spellID = spellID}
                     UpdateSpellList()

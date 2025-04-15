@@ -515,8 +515,8 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
         print("[LogTimeline] Loaded")
         LogTimelineDB = LogTimelineDB or {}
         LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
-        InitializeIcons()
         LoadPositionAndSize()
+        InitializeIcons()
         CheckBuff()
         CheckCooldowns()
         CheckDebuff()
