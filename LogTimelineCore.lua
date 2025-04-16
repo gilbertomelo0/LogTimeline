@@ -341,8 +341,11 @@ local function UpdateOverlapGroups()
 end
 
 local function UpdateAlphaPhasing()
+    local maxDuration = LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45
+    local hideLongDurations = LogTimelineDB and LogTimelineDB.hideLongDurations or false
+    
     for _, iconData in pairs(buffIcons) do
-        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.buffs[iconData.name] then
+        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.buffs[iconData.name] or (hideLongDurations and iconData.remainingTime > maxDuration) then
             iconData.frame:Hide()
             iconData.xPos = 0
             iconData.groupIndex = 0
@@ -351,7 +354,7 @@ local function UpdateAlphaPhasing()
         end
     end
     for _, iconData in pairs(cooldownIcons) do
-        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.cooldowns[iconData.name] then
+        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.cooldowns[iconData.name] or (hideLongDurations and iconData.remainingTime > maxDuration) then
             iconData.frame:Hide()
             iconData.xPos = 0
             iconData.groupIndex = 0
@@ -360,7 +363,7 @@ local function UpdateAlphaPhasing()
         end
     end
     for _, iconData in pairs(debuffIcons) do
-        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.debuffs[iconData.name] then
+        if not iconData.isActive or iconData.remainingTime <= 0 or not LogTimelineDB.trackedSpells.debuffs[iconData.name] or (hideLongDurations and iconData.remainingTime > maxDuration) then
             iconData.frame:Hide()
             iconData.xPos = 0
             iconData.groupIndex = 0
@@ -389,15 +392,24 @@ end
 
 function UpdateIconPositions()
     local currentTime = GetTime()
+    local maxDuration = LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45
+    local hideLongDurations = LogTimelineDB and LogTimelineDB.hideLongDurations or false
+    
     for _, iconData in pairs(buffIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime and LogTimelineDB.trackedSpells.buffs[iconData.name] then
             iconData.remainingTime = iconData.expirationTime - currentTime
-            local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
-            iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
-            iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
-            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
-            iconData.frame:Show()
-            if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
+            if hideLongDurations and iconData.remainingTime > maxDuration then
+                iconData.frame:Hide()
+                iconData.xPos = 0
+                iconData.groupIndex = 0
+            else
+                local timeLeft = math.min(iconData.remainingTime, maxDuration)
+                iconData.xPos = CalculatePosition(timeLeft, maxDuration)
+                iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+                iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
+                iconData.frame:Show()
+                if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
+            end
         else
             iconData.isActive = false
             iconData.frame:Hide()
@@ -408,15 +420,22 @@ function UpdateIconPositions()
     for _, iconData in pairs(cooldownIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime and LogTimelineDB.trackedSpells.cooldowns[iconData.name] then
             iconData.remainingTime = iconData.expirationTime - currentTime
-            local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
-            iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
-            iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
-            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
-            iconData.frame:Show()
-            if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
-            if iconData.glow and iconData.shouldGlow then
-                iconData.glow:SetDrawLayer("OVERLAY", 2)
-                iconData.glow:Show()
+            if hideLongDurations and iconData.remainingTime > maxDuration then
+                iconData.frame:Hide()
+                iconData.xPos = 0
+                iconData.groupIndex = 0
+                if iconData.glow then iconData.glow:Hide() end
+            else
+                local timeLeft = math.min(iconData.remainingTime, maxDuration)
+                iconData.xPos = CalculatePosition(timeLeft, maxDuration)
+                iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+                iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
+                iconData.frame:Show()
+                if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
+                if iconData.glow and iconData.shouldGlow then
+                    iconData.glow:SetDrawLayer("OVERLAY", 2)
+                    iconData.glow:Show()
+                end
             end
         else
             iconData.isActive = false
@@ -429,12 +448,18 @@ function UpdateIconPositions()
     for _, iconData in pairs(debuffIcons) do
         if iconData.isActive and iconData.expirationTime > currentTime and LogTimelineDB.trackedSpells.debuffs[iconData.name] then
             iconData.remainingTime = iconData.expirationTime - currentTime
-            local timeLeft = math.min(iconData.remainingTime, TIMELINE_MAX_DURATION)
-            iconData.xPos = CalculatePosition(timeLeft, TIMELINE_MAX_DURATION)
-            iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
-            iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
-            iconData.frame:Show()
-            if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
+            if hideLongDurations and iconData.remainingTime > maxDuration then
+                iconData.frame:Hide()
+                iconData.xPos = 0
+                iconData.groupIndex = 0
+            else
+                local timeLeft = math.min(iconData.remainingTime, maxDuration)
+                iconData.xPos = CalculatePosition(timeLeft, maxDuration)
+                iconData.frame:SetPoint("CENTER", TimelineFrame, "CENTER", iconData.xPos, 0)
+                iconData.frame:SetFrameLevel(TimelineFrame:GetFrameLevel() + 10)
+                iconData.frame:Show()
+                if iconData.stackText then iconData.stackText:SetDrawLayer("OVERLAY", 1) end
+            end
         else
             iconData.isActive = false
             iconData.frame:Hide()
@@ -492,6 +517,8 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
         if ConfigFrame:IsShown() then
             WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            MaxDurationSlider:SetValue(LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45)
+            HideLongDurationsCheck:SetChecked(LogTimelineDB and LogTimelineDB.hideLongDurations or false)
         end
         print("[LogTimeline] Reset")
     elseif command == "config" then
@@ -499,6 +526,8 @@ SlashCmdList["LOGTIMELINE"] = function(msg)
             ConfigFrame:Show()
             WidthSlider:SetValue(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            MaxDurationSlider:SetValue(LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45)
+            HideLongDurationsCheck:SetChecked(LogTimelineDB and LogTimelineDB.hideLongDurations or false)
         end
     else
         print("[LogTimeline] Commands: lock, unlock, debuglayer, linear, log, base [number], min [seconds], fontsize [6-30], reset, config")
@@ -515,6 +544,8 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
         print("[LogTimeline] Loaded")
         LogTimelineDB = LogTimelineDB or {}
         LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
+        LogTimelineDB.timelineMaxDuration = LogTimelineDB.timelineMaxDuration or 45
+        LogTimelineDB.hideLongDurations = LogTimelineDB.hideLongDurations or false
         LoadPositionAndSize()
         InitializeIcons()
         CheckBuff()
@@ -525,6 +556,9 @@ EventFrame:SetScript("OnEvent", function(self, event, unit)
             WidthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.lineThickness or 4)
             LengthSlider:SetValue(LogTimelineDB and LogTimelineDB.totalDistance or 500)
             LengthSlider.Value:SetText(LogTimelineDB and LogTimelineDB.totalDistance or 500)
+            MaxDurationSlider:SetValue(LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45)
+            MaxDurationSlider.Value:SetText(LogTimelineDB and LogTimelineDB.timelineMaxDuration or 45)
+            HideLongDurationsCheck:SetChecked(LogTimelineDB and LogTimelineDB.hideLongDurations or false)
             if LockButton then LockButton:SetText(TimelineFrame.locked and "Unlock" or "Lock and Close") end
         end
     elseif event == "UNIT_AURA" then

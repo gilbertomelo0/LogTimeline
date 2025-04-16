@@ -3,7 +3,7 @@
 
 -- Create main configuration frame
 ConfigFrame = CreateFrame("Frame", "LogTimelineConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-ConfigFrame:SetSize(300, 200)
+ConfigFrame:SetSize(300, 250) -- Increased height for new controls
 ConfigFrame:SetPoint("CENTER")
 ConfigFrame:Hide()
 ConfigFrame:SetMovable(true)
@@ -243,7 +243,7 @@ local function CheckCooldownDelayed(spellID, spellName)
             duration = chargesInfo.cooldownDuration or 0
         end
     end
-    print("[LogTimeline Debug] Delayed check: " .. spellName .. " (ID: " .. spellID .. ", cooldown: " .. duration .. "s)")
+    --print("[LogTimeline Debug] Delayed check: " .. spellName .. " (ID: " .. spellID .. ", cooldown: " .. duration .. "s)")
     if duration > 0 then
         detectedSpells.cooldowns[spellName] = detectedSpells.cooldowns[spellName] or {spellID = spellID}
         UpdateSpellList()
@@ -307,9 +307,9 @@ LearningModeConfigFrame:SetScript("OnShow", function()
     end
     
     -- Debug: Print detected cooldowns
-    print("[LogTimeline Debug] Cooldowns detected:")
+    --print("[LogTimeline Debug] Cooldowns detected:")
     for spellName, info in pairs(detectedSpells.cooldowns) do
-        print(" - " .. spellName .. " (ID: " .. info.spellID .. ")")
+        --print(" - " .. spellName .. " (ID: " .. info.spellID .. ")")
     end
     
     UpdateSpellList()
@@ -430,7 +430,39 @@ end)
 LengthSlider.Value = LengthSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 LengthSlider.Value:SetPoint("BOTTOM", LengthSlider, "BOTTOM", 0, -5)
 
--- Initialize sliders on login
+-- Create slider for timeline max duration
+MaxDurationSlider = CreateFrame("Slider", "LogTimelineMaxDurationSlider", ConfigFrame, "OptionsSliderTemplate")
+MaxDurationSlider:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -170)
+MaxDurationSlider:SetWidth(260)
+MaxDurationSlider:SetMinMaxValues(10, 300)
+MaxDurationSlider:SetValueStep(1)
+MaxDurationSlider.Text:SetText("Max Timeline Duration (sec)")
+MaxDurationSlider.Low:SetText("10")
+MaxDurationSlider.High:SetText("300")
+MaxDurationSlider:SetScript("OnValueChanged", function(self, value)
+    local roundedValue = math.floor(value + 0.5)
+    LogTimelineDB = LogTimelineDB or {}
+    LogTimelineDB.timelineMaxDuration = roundedValue
+    self:SetValue(roundedValue)
+    self.Value:SetText(roundedValue)
+    if UpdateIconPositions then UpdateIconPositions() end
+end)
+MaxDurationSlider.Value = MaxDurationSlider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+MaxDurationSlider.Value:SetPoint("BOTTOM", MaxDurationSlider, "BOTTOM", 0, -5)
+
+-- Create checkbox for hiding icons beyond max duration
+HideLongDurationsCheck = CreateFrame("CheckButton", "LogTimelineHideLongDurationsCheck", ConfigFrame, "InterfaceOptionsCheckButtonTemplate")
+HideLongDurationsCheck:SetPoint("TOPLEFT", ConfigFrame, "TOPLEFT", 10, -210)
+HideLongDurationsCheck.Text = HideLongDurationsCheck:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+HideLongDurationsCheck.Text:SetPoint("LEFT", HideLongDurationsCheck, "RIGHT", 5, 0)
+HideLongDurationsCheck.Text:SetText("Hide Icons Beyond Max Duration")
+HideLongDurationsCheck:SetScript("OnClick", function(self)
+    LogTimelineDB = LogTimelineDB or {}
+    LogTimelineDB.hideLongDurations = self:GetChecked()
+    if UpdateIconPositions then UpdateIconPositions() end
+end)
+
+-- Initialize sliders and checkbox on login
 local EventFrame = CreateFrame("Frame")
 EventFrame:RegisterEvent("PLAYER_LOGIN")
 EventFrame:SetScript("OnEvent", function(self, event)
@@ -440,6 +472,9 @@ EventFrame:SetScript("OnEvent", function(self, event)
         WidthSlider.Value:SetText(LogTimelineDB.lineThickness or 4)
         LengthSlider:SetValue(LogTimelineDB.totalDistance or 500)
         LengthSlider.Value:SetText(LogTimelineDB.totalDistance or 500)
+        MaxDurationSlider:SetValue(LogTimelineDB.timelineMaxDuration or 45)
+        MaxDurationSlider.Value:SetText(LogTimelineDB.timelineMaxDuration or 45)
+        HideLongDurationsCheck:SetChecked(LogTimelineDB.hideLongDurations or false)
         if UpdateTimelineSize then UpdateTimelineSize() end
         InitializeIcons()
     end
