@@ -46,7 +46,7 @@ LearningModeButton:SetScript("OnClick", function() LearningModeConfigFrame:Show(
 
 -- Create Learning Mode configuration frame
 LearningModeConfigFrame = CreateFrame("Frame", "LearningModeConfigFrame", UIParent, "BasicFrameTemplateWithInset")
-LearningModeConfigFrame:SetSize(350, 500) -- Increased height for more spells
+LearningModeConfigFrame:SetSize(700, 500) -- Doubled width for two columns
 LearningModeConfigFrame:SetPoint("CENTER")
 LearningModeConfigFrame:Hide()
 LearningModeConfigFrame:SetMovable(true)
@@ -60,22 +60,43 @@ LearningModeConfigFrame.Title = LearningModeConfigFrame:CreateFontString(nil, "O
 LearningModeConfigFrame.Title:SetPoint("TOP", LearningModeConfigFrame, "TOP", 0, -5)
 LearningModeConfigFrame.Title:SetText("Learning Mode Configuration")
 
--- Set up scroll frame for spell list
-local ScrollFrame = CreateFrame("ScrollFrame", "LearningModeScrollFrame", LearningModeConfigFrame, "UIPanelScrollFrameTemplate")
-ScrollFrame:SetPoint("TOPLEFT", LearningModeConfigFrame, "TOPLEFT", 10, -30)
-ScrollFrame:SetPoint("BOTTOMRIGHT", LearningModeConfigFrame, "BOTTOMRIGHT", -30, 10)
+-- Set up header for Buffs/Debuffs column
+LearningModeConfigFrame.BuffDebuffHeader = LearningModeConfigFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+LearningModeConfigFrame.BuffDebuffHeader:SetPoint("TOPLEFT", LearningModeConfigFrame, "TOPLEFT", 20, -30)
+LearningModeConfigFrame.BuffDebuffHeader:SetText("Buffs/Debuffs")
 
-local ScrollChild = CreateFrame("Frame", nil, ScrollFrame)
-ScrollChild:SetSize(310, 200)
-ScrollFrame:SetScrollChild(ScrollChild)
+-- Set up header for Cooldowns column
+LearningModeConfigFrame.CooldownHeader = LearningModeConfigFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+LearningModeConfigFrame.CooldownHeader:SetPoint("TOPLEFT", LearningModeConfigFrame, "TOP", 20, -30)
+LearningModeConfigFrame.CooldownHeader:SetText("Cooldowns")
+
+-- Set up scroll frame for Buffs/Debuffs list (left column)
+local BuffDebuffScrollFrame = CreateFrame("ScrollFrame", "LearningModeBuffDebuffScrollFrame", LearningModeConfigFrame, "UIPanelScrollFrameTemplate")
+BuffDebuffScrollFrame:SetPoint("TOPLEFT", LearningModeConfigFrame, "TOPLEFT", 10, -50)
+BuffDebuffScrollFrame:SetPoint("BOTTOMRIGHT", LearningModeConfigFrame, "BOTTOM", -20, 10)
+
+local BuffDebuffScrollChild = CreateFrame("Frame", nil, BuffDebuffScrollFrame)
+BuffDebuffScrollChild:SetSize(310, 200)
+BuffDebuffScrollFrame:SetScrollChild(BuffDebuffScrollChild)
+
+-- Set up scroll frame for Cooldowns list (right column)
+local CooldownScrollFrame = CreateFrame("ScrollFrame", "LearningModeCooldownScrollFrame", LearningModeConfigFrame, "UIPanelScrollFrameTemplate")
+CooldownScrollFrame:SetPoint("TOPLEFT", LearningModeConfigFrame, "TOP", 10, -50)
+CooldownScrollFrame:SetPoint("BOTTOMRIGHT", LearningModeConfigFrame, "BOTTOMRIGHT", -30, 10)
+
+local CooldownScrollChild = CreateFrame("Frame", nil, CooldownScrollFrame)
+CooldownScrollChild:SetSize(310, 200)
+CooldownScrollFrame:SetScrollChild(CooldownScrollChild)
 
 -- Tables for spell tracking
 local detectedSpells = {buffs = {}, cooldowns = {}, debuffs = {}} -- Spells detected via events
-local spellRows = {} -- UI rows for spell list
+local buffDebuffRows = {} -- UI rows for buffs/debuffs list
+local cooldownRows = {} -- UI rows for cooldowns list
 
--- Updates the spell list in Learning Mode, showing checked spells at top, then unchecked
+-- Updates the spell lists in Learning Mode, showing checked spells at top, then unchecked
 local function UpdateSpellList()
-    local yOffset = -10
+    local buffDebuffYOffset = -10
+    local cooldownYOffset = -10
     local rowHeight = 25
     
     -- Initialize saved variables if needed
@@ -83,63 +104,87 @@ local function UpdateSpellList()
     LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
     
     -- Clear existing rows
-    for _, row in ipairs(spellRows) do
+    for _, row in ipairs(buffDebuffRows) do
+        row:Hide()
+        row.checkBox:SetScript("OnClick", nil)
+    end
+    for _, row in ipairs(cooldownRows) do
         row:Hide()
         row.checkBox:SetScript("OnClick", nil)
         if row.glow then row.glow:Hide() end
     end
-    wipe(spellRows)
+    wipe(buffDebuffRows)
+    wipe(cooldownRows)
     
-    -- Split into checked and unchecked spells
-    local checkedSpells = {}
-    local uncheckedSpells = {}
+    -- Split into checked and unchecked spells for Buffs/Debuffs
+    local checkedBuffDebuffs = {}
+    local uncheckedBuffDebuffs = {}
     
-    -- Add tracked (checked) spells
+    -- Split into checked and unchecked spells for Cooldowns
+    local checkedCooldowns = {}
+    local uncheckedCooldowns = {}
+    
+    -- Add tracked (checked) spells for Buffs/Debuffs
     for spellName, info in pairs(LogTimelineDB.trackedSpells.buffs) do
-        table.insert(checkedSpells, {name = spellName, type = "Buff", spellID = info.spellID})
-    end
-    for spellName, info in pairs(LogTimelineDB.trackedSpells.cooldowns) do
-        table.insert(checkedSpells, {name = spellName, type = "Cooldown", spellID = info.spellID})
+        table.insert(checkedBuffDebuffs, {name = spellName, type = "Buff", spellID = info.spellID})
     end
     for spellName, info in pairs(LogTimelineDB.trackedSpells.debuffs) do
-        table.insert(checkedSpells, {name = spellName, type = "Debuff", spellID = info.spellID})
+        table.insert(checkedBuffDebuffs, {name = spellName, type = "Debuff", spellID = info.spellID})
     end
     
-    -- Add detected (unchecked) spells, skipping those already tracked
+    -- Add tracked (checked) spells for Cooldowns
+    for spellName, info in pairs(LogTimelineDB.trackedSpells.cooldowns) do
+        table.insert(checkedCooldowns, {name = spellName, type = "Cooldown", spellID = info.spellID})
+    end
+    
+    -- Add detected (unchecked) spells for Buffs/Debuffs, skipping those already tracked
     for spellName, info in pairs(detectedSpells.buffs) do
         if not LogTimelineDB.trackedSpells.buffs[spellName] then
-            table.insert(uncheckedSpells, {name = spellName, type = "Buff", spellID = info.spellID})
-        end
-    end
-    for spellName, info in pairs(detectedSpells.cooldowns) do
-        if not LogTimelineDB.trackedSpells.cooldowns[spellName] then
-            table.insert(uncheckedSpells, {name = spellName, type = "Cooldown", spellID = info.spellID})
+            table.insert(uncheckedBuffDebuffs, {name = spellName, type = "Buff", spellID = info.spellID})
         end
     end
     for spellName, info in pairs(detectedSpells.debuffs) do
         if not LogTimelineDB.trackedSpells.debuffs[spellName] then
-            table.insert(uncheckedSpells, {name = spellName, type = "Debuff", spellID = info.spellID})
+            table.insert(uncheckedBuffDebuffs, {name = spellName, type = "Debuff", spellID = info.spellID})
+        end
+    end
+    
+    -- Add detected (unchecked) spells for Cooldowns, skipping those already tracked
+    for spellName, info in pairs(detectedSpells.cooldowns) do
+        if not LogTimelineDB.trackedSpells.cooldowns[spellName] then
+            table.insert(uncheckedCooldowns, {name = spellName, type = "Cooldown", spellID = info.spellID})
         end
     end
     
     -- Sort each group alphabetically
-    table.sort(checkedSpells, function(a, b) return a.name < b.name end)
-    table.sort(uncheckedSpells, function(a, b) return a.name < b.name end)
+    table.sort(checkedBuffDebuffs, function(a, b) return a.name < b.name end)
+    table.sort(uncheckedBuffDebuffs, function(a, b) return a.name < b.name end)
+    table.sort(checkedCooldowns, function(a, b) return a.name < b.name end)
+    table.sort(uncheckedCooldowns, function(a, b) return a.name < b.name end)
     
-    -- Combine lists: checked first, then unchecked
-    local allSpells = {}
-    for _, spell in ipairs(checkedSpells) do
-        table.insert(allSpells, spell)
+    -- Combine lists: checked first, then unchecked for Buffs/Debuffs
+    local allBuffDebuffs = {}
+    for _, spell in ipairs(checkedBuffDebuffs) do
+        table.insert(allBuffDebuffs, spell)
     end
-    for _, spell in ipairs(uncheckedSpells) do
-        table.insert(allSpells, spell)
+    for _, spell in ipairs(uncheckedBuffDebuffs) do
+        table.insert(allBuffDebuffs, spell)
     end
     
-    -- Create UI rows for each spell
-    for i, spell in ipairs(allSpells) do
-        local row = CreateFrame("Frame", nil, ScrollChild)
+    -- Combine lists: checked first, then unchecked for Cooldowns
+    local allCooldowns = {}
+    for _, spell in ipairs(checkedCooldowns) do
+        table.insert(allCooldowns, spell)
+    end
+    for _, spell in ipairs(uncheckedCooldowns) do
+        table.insert(allCooldowns, spell)
+    end
+    
+    -- Create UI rows for Buffs/Debuffs
+    for i, spell in ipairs(allBuffDebuffs) do
+        local row = CreateFrame("Frame", nil, BuffDebuffScrollChild)
         row:SetSize(300, rowHeight)
-        row:SetPoint("TOPLEFT", ScrollChild, "TOPLEFT", 0, yOffset)
+        row:SetPoint("TOPLEFT", BuffDebuffScrollChild, "TOPLEFT", 0, buffDebuffYOffset)
         
         -- Create spell icon
         local icon = row:CreateTexture(nil, "ARTWORK")
@@ -150,17 +195,6 @@ local function UpdateSpellList()
             icon:SetTexture(spellInfo.iconID)
         else
             icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-        end
-        
-        -- Add glow for cooldowns
-        if spell.type == "Cooldown" then
-            local glow = row:CreateTexture(nil, "OVERLAY")
-            glow:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
-            glow:SetPoint("CENTER", icon, "CENTER")
-            glow:SetSize(30, 30) -- Slightly larger than icon
-            glow:SetBlendMode("ADD")
-            glow:SetVertexColor(1, 0.8, 0, 0.8) -- Yellow glow
-            row.glow = glow
         end
         
         -- Create spell name text, offset to right of icon
@@ -185,12 +219,6 @@ local function UpdateSpellList()
                 else
                     LogTimelineDB.trackedSpells.buffs[spell.name] = nil
                 end
-            elseif spell.type == "Cooldown" then
-                if isChecked then
-                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = {spellID = spell.spellID, shouldGlow = true}
-                else
-                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = nil
-                end
             elseif spell.type == "Debuff" then
                 if isChecked then
                     LogTimelineDB.trackedSpells.debuffs[spell.name] = {spellID = spell.spellID}
@@ -212,8 +240,6 @@ local function UpdateSpellList()
         local isTracked = false
         if spell.type == "Buff" and LogTimelineDB.trackedSpells.buffs[spell.name] then
             isTracked = true
-        elseif spell.type == "Cooldown" and LogTimelineDB.trackedSpells.cooldowns[spell.name] then
-            isTracked = true
         elseif spell.type == "Debuff" and LogTimelineDB.trackedSpells.debuffs[spell.name] then
             isTracked = true
         end
@@ -221,12 +247,86 @@ local function UpdateSpellList()
         
         row.checkBox = checkBox
         row:Show()
-        table.insert(spellRows, row)
+        table.insert(buffDebuffRows, row)
         
-        yOffset = yOffset - rowHeight
+        buffDebuffYOffset = buffDebuffYOffset - rowHeight
     end
     
-    ScrollChild:SetHeight(math.abs(yOffset))
+    -- Create UI rows for Cooldowns
+    for i, spell in ipairs(allCooldowns) do
+        local row = CreateFrame("Frame", nil, CooldownScrollChild)
+        row:SetSize(300, rowHeight)
+        row:SetPoint("TOPLEFT", CooldownScrollChild, "TOPLEFT", 0, cooldownYOffset)
+        
+        -- Create spell icon
+        local icon = row:CreateTexture(nil, "ARTWORK")
+        icon:SetSize(20, 20)
+        icon:SetPoint("LEFT", row, "LEFT", 5, 0)
+        local spellInfo = C_Spell.GetSpellInfo(spell.spellID)
+        if spellInfo and spellInfo.iconID then
+            icon:SetTexture(spellInfo.iconID)
+        else
+            icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+        end
+        
+        -- Add glow for cooldowns
+        local glow = row:CreateTexture(nil, "OVERLAY")
+        glow:SetTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+        glow:SetPoint("CENTER", icon, "CENTER")
+        glow:SetSize(30, 30) -- Slightly larger than icon
+        glow:SetBlendMode("ADD")
+        glow:SetVertexColor(1, 0.8, 0, 0.8) -- Yellow glow
+        row.glow = glow
+        
+        -- Create spell name text, offset to right of icon
+        local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
+        text:SetText(spell.name .. " - " .. spell.type)
+        
+        -- Create checkbox for tracking
+        local checkBox = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+        checkBox:SetPoint("RIGHT", row, "RIGHT", -5, 0)
+        checkBox:SetSize(20, 20)
+        checkBox:SetScript("OnClick", function(self)
+            LogTimelineDB = LogTimelineDB or {}
+            LogTimelineDB.trackedSpells = LogTimelineDB.trackedSpells or {buffs = {}, cooldowns = {}, debuffs = {}}
+            
+            local isChecked = self:GetChecked()
+            
+            -- Update tracked spells based on checkbox state
+            if spell.type == "Cooldown" then
+                if isChecked then
+                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = {spellID = spell.spellID, shouldGlow = true}
+                else
+                    LogTimelineDB.trackedSpells.cooldowns[spell.name] = nil
+                end
+            end
+            
+            -- Update timeline and spell list
+            InitializeIcons()
+            CheckBuff()
+            CheckDebuff()
+            CheckCooldowns()
+            UpdateIconPositions()
+            UpdateSpellList() -- Refresh list to reflect checkbox change
+        end)
+        
+        -- Set checkbox state based on tracking
+        local isTracked = false
+        if spell.type == "Cooldown" and LogTimelineDB.trackedSpells.cooldowns[spell.name] then
+            isTracked = true
+        end
+        checkBox:SetChecked(isTracked)
+        
+        row.checkBox = checkBox
+        row:Show()
+        table.insert(cooldownRows, row)
+        
+        cooldownYOffset = cooldownYOffset - rowHeight
+    end
+    
+    BuffDebuffScrollChild:SetHeight(math.abs(buffDebuffYOffset))
+    CooldownScrollChild:SetHeight(math.abs(cooldownYOffset))
 end
 
 -- Queue for delayed cooldown checks
