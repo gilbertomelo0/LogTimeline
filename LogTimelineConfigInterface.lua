@@ -166,7 +166,7 @@ local function UpdateSpellList()
         -- Create spell name text, offset to right of icon
         local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
-        text:SetText(spell.name .. " (" .. spell.type .. ")")
+        text:SetText(spell.name .. " - " .. spell.type)
         
         -- Create checkbox for tracking
         local checkBox = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
